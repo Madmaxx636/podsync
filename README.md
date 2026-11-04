@@ -39,4 +39,8 @@ Tested: the server (smoke test), feed parsing, both sync merges, the AntennaPod 
 
 ## Updates
 
-The apps look for new versions on github.com/Madmaxx636/podsync-releases (Settings > Advanced and about). To publish: build both from CI, then `gh release create vX.Y.Z -R Madmaxx636/podsync-releases` with `PodSync-Setup-x64.exe`, `PodSync-android.apk` and `SHA256SUMS.txt`. The checksum file is required; the apps refuse a download that does not match it. Keep `version:` in `app/pubspec.yaml` equal to the release tag.
+The apps look for new versions on github.com/Madmaxx636/podsync-releases (Settings > Advanced and about). To publish: push, wait for the Windows, Android, Linux and Server builds, then run `tools/release.sh X.Y.Z`. It downloads the CI builds, writes `SHA256SUMS.txt` and creates the release on both repositories. The checksum file is required; the apps refuse a download that does not match it. Keep `version:` in `app/pubspec.yaml` equal to the release tag.
+
+## Linux
+
+Download `PodSync-linux-x64.tar.gz`, unpack it and run `podsync/install.sh`. It installs for your user (no root) and adds a menu entry. PodSync plays audio with libmpv (`sudo apt install libmpv2` on Debian and Ubuntu). Updates then install from inside the app.

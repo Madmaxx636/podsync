@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 - 2026-11-04
+
+- Linux build: `PodSync-linux-x64.tar.gz` with an install script (installs for your user, adds a menu entry) and in-app updates that unpack the new version over the old one. PodSync needs libmpv for audio (`sudo apt install libmpv2`).
+- Now Playing: the current chapter shows under the title, and swiping up (or tapping "Show notes") opens AntennaPod's slide-up panel with the show notes and a tappable chapter list.
+- Phone: Copy episode link in the episode menu; on a podcast page, Mark all as played or unplayed and Copy feed address.
+- Updates: a finished update download is reused if you tap Install again; the Linux build checks that its folder is writable first.
+- Server: GitHub builds, tests and smoke-tests the Docker image on every push and publishes it to GitHub's container registry for each version (`ghcr.io/madmaxx636/podsync-server`). The image reports its version.
+- Releasing is now one command, `tools/release.sh X.Y.Z`.
+
 ## 0.2.0 - 2026-11-04
 
 - Updates from GitHub. PodSync checks the public releases page when it opens (and once a day while it stays open) and offers a newer version in a dialog: Install, Later, or Skip this version. Windows downloads the installer, checks it against the release's SHA-256 list, installs quietly and restarts PodSync. Android downloads and checks the APK, then hands it to the system installer (it asks once to allow installs from PodSync, then once per update to confirm). A download that does not match its checksum is never run. On Linux the dialog opens the releases page.

@@ -1,0 +1,46 @@
+name: Server
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - run: go vet ./...
+      - run: go test ./...
+
+      - name: Build the image
+        run: docker build --build-arg VERSION=${GITHUB_REF_NAME} -t podsync-server:ci .
+
+      # Prove the image works: start it, add a user from inside, log in.
+      - name: Smoke test the image
+        run: |
+          docker run -d --name ps -p 8080:8080 podsync-server:ci
+          for i in $(seq 1 20); do curl -fs localhost:8080/api/health && break; sleep 1; done
+          echo "correct horse battery" | docker exec -i ps podsync-server user add alice
+          curl -fs -XPOST localhost:8080/api/login -d '{"username":"alice","password":"correct horse battery"}' | grep -q token
+          docker rm -f ps
+
+      # Version tags (v0.3.0 and so on) publish the image to GitHub's container registry.
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          IMAGE=ghcr.io/$(echo "${{ github.repository_owner }}" | tr A-Z a-z)/podsync-server
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag podsync-server:ci $IMAGE:${GITHUB_REF_NAME#v}
+          docker tag podsync-server:ci $IMAGE:latest
+          docker push $IMAGE:${GITHUB_REF_NAME#v}
+          docker push $IMAGE:latest

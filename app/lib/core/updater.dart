@@ -28,7 +28,7 @@ class UpdateInfo {
   final String version;
   final String notes;
   final String pageUrl;
-  final Uri? assetUrl; // the installer or APK for this platform; null on Linux
+  final Uri? assetUrl; // the installer, APK or archive for this platform
   final Uri? sumsUrl;
 }
 
@@ -55,6 +55,7 @@ bool isNewerVersion(String a, String b) {
 String? updateAssetName() {
   if (Platform.isWindows) return 'PodSync-Setup-x64.exe';
   if (Platform.isAndroid) return 'PodSync-android.apk';
+  if (Platform.isLinux) return 'PodSync-linux-x64.tar.gz';
   return null;
 }
 
@@ -76,8 +77,8 @@ class UpdateController extends ChangeNotifier {
   final String? assetName;
   final Future<void> Function(String path) install$;
 
-  /// False when the system needs the person to allow installs first.
-  final Future<bool> Function() prepare;
+  /// Null when installing can go ahead, otherwise what the person has to do first.
+  final Future<String?> Function() prepare;
 
   /// Where downloads go; defaults to the system temp folder.
   final Directory? tempDir;
@@ -177,8 +178,9 @@ class UpdateController extends ChangeNotifier {
     final a = available;
     if (a == null || a.assetUrl == null || progress != null) return;
     error = null;
-    if (!await prepare()) {
-      error = 'Allow PodSync to install updates in the settings page that just opened, then tap Install again.';
+    final blocked = await prepare();
+    if (blocked != null) {
+      error = blocked;
       notifyListeners();
       return;
     }
@@ -189,29 +191,41 @@ class UpdateController extends ChangeNotifier {
       final file = File(
         p.join(dir.path, 'update-${a.version}-${p.basename(a.assetUrl!.path)}'),
       );
-      final res = await _client.send(
-        http.Request('GET', a.assetUrl!)..followRedirects = true,
-      );
-      if (res.statusCode != 200) {
-        throw HttpException('download answered ${res.statusCode}');
-      }
-      final total = res.contentLength ?? 0;
-      var got = 0;
-      final sink = file.openWrite();
-      final digest = AccumulatorSink<Digest>();
-      final hasher = sha256.startChunkedConversion(digest);
-      await for (final chunk in res.stream) {
-        sink.add(chunk);
-        hasher.add(chunk);
-        got += chunk.length;
-        if (total > 0) {
-          progress = got / total;
-          notifyListeners();
+      final expected = await _expectedSum(a);
+      // A finished, matching download from an earlier try is reused instead of fetched again.
+      final reuse =
+          file.existsSync() &&
+          sha256.convert(await file.readAsBytes()).toString() == expected;
+      if (!reuse) {
+        final res = await _client.send(
+          http.Request('GET', a.assetUrl!)..followRedirects = true,
+        );
+        if (res.statusCode != 200) {
+          throw HttpException('download answered ${res.statusCode}');
+        }
+        final total = res.contentLength ?? 0;
+        var got = 0;
+        final sink = file.openWrite();
+        final digest = AccumulatorSink<Digest>();
+        final hasher = sha256.startChunkedConversion(digest);
+        await for (final chunk in res.stream) {
+          sink.add(chunk);
+          hasher.add(chunk);
+          got += chunk.length;
+          if (total > 0) {
+            progress = got / total;
+            notifyListeners();
+          }
+        }
+        await sink.close();
+        hasher.close();
+        if (digest.events.single.toString() != expected) {
+          await file.delete();
+          throw const FormatException(
+            'the download does not match its checksum',
+          );
         }
       }
-      await sink.close();
-      hasher.close();
-      await _verify(a, digest.events.single.toString());
       progress = 1;
       notifyListeners();
       await install$(file.path);
@@ -225,9 +239,9 @@ class UpdateController extends ChangeNotifier {
     }
   }
 
-  /// The checksum must match SHA256SUMS.txt from the same release, so a damaged or swapped
-  /// download is never run.
-  Future<void> _verify(UpdateInfo a, String actual) async {
+  /// The checksum SHA256SUMS.txt publishes for this release's installer. The download must
+  /// match it, so a damaged or swapped file is never run.
+  Future<String> _expectedSum(UpdateInfo a) async {
     final sums = a.sumsUrl;
     if (sums == null) {
       throw const FormatException('the release has no checksum file');
@@ -237,10 +251,7 @@ class UpdateController extends ChangeNotifier {
     for (final line in const LineSplitter().convert(utf8.decode(r.bodyBytes))) {
       final m = RegExp(r'^([0-9a-fA-F]{64})\s+\*?(.+)$')
           .firstMatch(line.trim());
-      if (m != null && m.group(2) == name) {
-        if (m.group(1)!.toLowerCase() == actual.toLowerCase()) return;
-        throw const FormatException('the download does not match its checksum');
-      }
+      if (m != null && m.group(2) == name) return m.group(1)!.toLowerCase();
     }
     throw const FormatException(
       'the checksum file does not list this download',
@@ -256,12 +267,31 @@ class UpdateController extends ChangeNotifier {
 
 const _channel = MethodChannel('dev.podsync/update');
 
-Future<bool> _platformPrepare() async => Platform.isAndroid
-    ? (await _channel.invokeMethod<bool>('prepare')) ?? false
-    : true;
+/// Where the Linux build is installed: the folder holding the running program.
+Directory get _linuxInstallDir => File(Platform.resolvedExecutable).parent;
 
-/// Windows: run the installer quietly (it closes and restarts the app); Android: hand the
-/// APK to the system installer, which asks for one confirmation.
+Future<String?> _platformPrepare() async {
+  if (Platform.isAndroid) {
+    final ok = (await _channel.invokeMethod<bool>('prepare')) ?? false;
+    return ok
+        ? null
+        : 'Allow PodSync to install updates in the settings page that just opened, then tap Install again.';
+  }
+  if (Platform.isLinux) {
+    try {
+      final probe = File(p.join(_linuxInstallDir.path, '.update-probe'));
+      probe.writeAsStringSync('');
+      probe.deleteSync();
+    } catch (_) {
+      return 'PodSync is installed in a folder you cannot write to. Download the new version from the releases page and install it over this one.';
+    }
+  }
+  return null;
+}
+
+/// Windows: run the installer quietly (it closes and restarts the app). Android: hand the
+/// APK to the system installer, which asks for one confirmation. Linux: unpack the new
+/// version over the install folder and start it.
 Future<void> _platformInstall(String path) async {
   if (Platform.isWindows) {
     await Process.start(path, [
@@ -274,6 +304,25 @@ Future<void> _platformInstall(String path) async {
     exit(0);
   } else if (Platform.isAndroid) {
     await _channel.invokeMethod<void>('install', {'path': path});
+  } else if (Platform.isLinux) {
+    final dir = _linuxInstallDir.path;
+    final r = await Process.run('tar', [
+      '-xzf',
+      path,
+      '-C',
+      dir,
+      '--strip-components=1',
+    ]);
+    if (r.exitCode != 0) {
+      throw ProcessException('tar', [], '${r.stderr}'.trim(), r.exitCode);
+    }
+    await Process.start(
+      Platform.resolvedExecutable,
+      const [],
+      mode: ProcessStartMode.detached,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    exit(0);
   } else {
     throw UnsupportedError('Updates install by hand on this system');
   }

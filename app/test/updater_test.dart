@@ -65,7 +65,7 @@ void main() {
         currentVersion: current,
         assetName: 'PodSync-android.apk',
         install$: (path) async => ran.add(path),
-        prepare: () async => true,
+        prepare: () async => null,
         tempDir: Directory.systemTemp.createTempSync('upd'),
       );
       return (up, ran);
@@ -122,6 +122,35 @@ void main() {
       await up.install();
       expect(ran, isEmpty);
       expect(up.error, contains('checksum'));
+    });
+
+    test('a finished download is reused instead of fetched again', () async {
+      var downloads = 0;
+      final inner = releases();
+      final counting = MockClient((r) async {
+        if (r.url.path == '/PodSync-android.apk') downloads++;
+        return inner.get(r.url).then((x) => x);
+      });
+      final dir = Directory.systemTemp.createTempSync('upd');
+      final lib = Library();
+      final ran = <String>[];
+      UpdateController build() => UpdateController(
+        lib,
+        client: counting,
+        currentVersion: '0.2.0',
+        assetName: 'PodSync-android.apk',
+        install$: (path) async => ran.add(path),
+        prepare: () async => null,
+        tempDir: dir,
+      );
+      final one = build();
+      await one.check();
+      await one.install();
+      final two = build();
+      await two.check();
+      await two.install();
+      expect(ran, hasLength(2));
+      expect(downloads, 1);
     });
   });
 }

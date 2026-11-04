@@ -1,0 +1,54 @@
+name: Linux build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libmpv-dev libasound2-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter build linux --release
+
+      - name: Package
+        working-directory: .
+        run: |
+          ./tools/package-linux.sh PodSync-linux-x64.tar.gz
+          sha256sum PodSync-linux-x64.tar.gz > PodSync-linux-x64.tar.gz.sha256
+          ls -la PodSync-linux-x64.tar.gz
+
+      # Prove the archive installs: unpack, run the install script into a scratch home, check the files.
+      - name: Test the install script
+        working-directory: .
+        run: |
+          mkdir -p "$RUNNER_TEMP/unpack" "$RUNNER_TEMP/home"
+          tar -xzf PodSync-linux-x64.tar.gz -C "$RUNNER_TEMP/unpack"
+          HOME="$RUNNER_TEMP/home" XDG_DATA_HOME="$RUNNER_TEMP/home/data" "$RUNNER_TEMP/unpack/podsync/install.sh"
+          test -x "$RUNNER_TEMP/home/data/podsync/podsync"
+          grep -q "Exec=$RUNNER_TEMP/home/data/podsync/podsync" "$RUNNER_TEMP/home/data/applications/podsync.desktop"
+          ldd "$RUNNER_TEMP/home/data/podsync/podsync" | grep "not found" || echo "all libraries resolved"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PodSync-linux
+          path: |
+            PodSync-linux-x64.tar.gz
+            PodSync-linux-x64.tar.gz.sha256

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=PodSync
+Comment=Podcast app that syncs through your own server
+Exec=@DEST@/podsync
+Icon=@DEST@/podsync.png
+Terminal=false
+Categories=AudioVideo;Audio;Player;

@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:provider/provider.dart';
 
@@ -877,6 +878,16 @@ class EpisodeTile extends StatelessWidget {
         played ? 'Mark as unplayed' : 'Mark as played',
         () => lib.markPlayed(e.id, !played),
       ),
+      (
+        Icons.link,
+        'Copy episode link',
+        () async {
+          await Clipboard.setData(
+            ClipboardData(text: e.link.isNotEmpty ? e.link : e.audioUrl),
+          );
+          if (context.mounted) showSnack(context, 'Link copied');
+        },
+      ),
     ];
 
     showModalBottomSheet(
@@ -1204,6 +1215,42 @@ class _PodcastScreenState extends State<PodcastScreen> {
                 PopupMenuItem(value: 'remove', child: Text('Remove downloads')),
               ],
             ),
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            onSelected: (v) async {
+              if (v == 'copy') {
+                await Clipboard.setData(ClipboardData(text: widget.feedUrl));
+                if (context.mounted) showSnack(context, 'Feed address copied');
+              } else {
+                final all = lib.episodesOf(widget.feedUrl).map((e) => e.id);
+                lib.markAllPlayed(all, v == 'played');
+                if (context.mounted) {
+                  showSnack(
+                    context,
+                    v == 'played'
+                        ? 'All episodes marked as played'
+                        : 'All episodes marked as unplayed',
+                  );
+                }
+              }
+            },
+            itemBuilder: (c) => [
+              if (subscribed) ...const [
+                PopupMenuItem(
+                  value: 'played',
+                  child: Text('Mark all as played'),
+                ),
+                PopupMenuItem(
+                  value: 'unplayed',
+                  child: Text('Mark all as unplayed'),
+                ),
+              ],
+              const PopupMenuItem(
+                value: 'copy',
+                child: Text('Copy feed address'),
+              ),
+            ],
+          ),
           if (subscribed)
             IconButton(
               tooltip: 'Podcast settings',
@@ -1373,6 +1420,10 @@ class PlayerScreen extends StatelessWidget {
 
     final scheme = Theme.of(context).colorScheme;
     final speed = lib.speedFor(e.feedUrl);
+    Chapter? chapterNow;
+    for (final c in e.chapters) {
+      if (c.startMs <= player.position.inMilliseconds) chapterNow = c;
+    }
     final speedButton = lib.settings.uiPlayerSpeed
         ? Tooltip(
             message: 'Playback speed',
@@ -1452,6 +1503,17 @@ class PlayerScreen extends StatelessWidget {
                       color: eink ? null : scheme.onSurfaceVariant,
                     ),
                   ),
+                  if (chapterNow != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        chapterNow.title,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
                   if (player.error != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
@@ -1555,9 +1617,109 @@ class PlayerScreen extends StatelessWidget {
                   ],
                 ),
               ),
-            const SizedBox(height: 8),
+            if (eink)
+              const SizedBox(height: 8)
+            else
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showPlayerSheet(context, e),
+                onVerticalDragEnd: (d) {
+                  if ((d.primaryVelocity ?? 0) < -200) {
+                    _showPlayerSheet(context, e);
+                  }
+                },
+                child: SizedBox(
+                  height: 48,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.keyboard_arrow_up,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      Text(
+                        e.chapters.isEmpty
+                            ? 'Show notes'
+                            : 'Show notes and chapters',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// AntennaPod's slide-up panel: the show notes, and the chapters to jump between.
+void _showPlayerSheet(BuildContext context, Episode e) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.85,
+      maxChildSize: 0.95,
+      minChildSize: 0.4,
+      builder: (c, scroll) => _PlayerSheet(e, scroll),
+    ),
+  );
+}
+
+class _PlayerSheet extends StatelessWidget {
+  const _PlayerSheet(this.e, this.scroll);
+  final Episode e;
+  final ScrollController scroll;
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.watch<PlayerController>();
+    final notes = ListView(
+      controller: scroll,
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(e.title, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 12),
+        SelectableText(
+          e.description.isEmpty ? 'No show notes.' : e.description,
+        ),
+      ],
+    );
+    if (e.chapters.isEmpty) return notes;
+    final now = player.position.inMilliseconds;
+    var current = 0;
+    for (var i = 0; i < e.chapters.length; i++) {
+      if (e.chapters[i].startMs <= now) current = i;
+    }
+    final chapters = ListView.builder(
+      controller: scroll,
+      itemCount: e.chapters.length,
+      itemBuilder: (c, i) {
+        final ch = e.chapters[i];
+        return ListTile(
+          selected: i == current,
+          leading: Text(fmtDuration(Duration(milliseconds: ch.startMs))),
+          title: Text(ch.title),
+          onTap: () => player.seek(Duration(milliseconds: ch.startMs)),
+        );
+      },
+    );
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          const TabBar(
+            tabs: [
+              Tab(text: 'Notes'),
+              Tab(text: 'Chapters'),
+            ],
+          ),
+          Expanded(child: TabBarView(children: [notes, chapters])),
+        ],
       ),
     );
   }
