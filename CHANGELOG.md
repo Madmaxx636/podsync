@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 - 2026-11-04
+
+- Updates from GitHub. PodSync checks the public releases page when it opens (and once a day while it stays open) and offers a newer version in a dialog: Install, Later, or Skip this version. Windows downloads the installer, checks it against the release's SHA-256 list, installs quietly and restarts PodSync. Android downloads and checks the APK, then hands it to the system installer (it asks once to allow installs from PodSync, then once per update to confirm). A download that does not match its checksum is never run. On Linux the dialog opens the releases page.
+- Settings > Advanced and about: the version, a switch for automatic checks, and Check for updates now.
+- Releases now live in a public repository, github.com/Madmaxx636/podsync-releases, so the apps need no login to see them.
+
 ## 0.1.1 - 2026-11-04
 
 - Now Playing redesigned to match AntennaPod: a collapse arrow, full-width cover, episode and podcast name, seek bar with elapsed and remaining time, and a control row with the speed button, rewind, a large play button, fast-forward and skip.

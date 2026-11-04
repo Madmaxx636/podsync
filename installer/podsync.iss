@@ -42,5 +42,13 @@ Name: "{autodesktop}\PodSync"; Filename: "{app}\podsync.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\podsync.exe"; Description: "Start PodSync"; Flags: nowait postinstall skipifsilent
+; An update started from inside the app passes /RELAUNCH=1 so PodSync comes back by itself.
+Filename: "{app}\podsync.exe"; Flags: nowait; Check: Relaunch
 
 ; Your library, settings and downloads live outside the install folder, so uninstalling keeps them.
+
+[Code]
+function Relaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;

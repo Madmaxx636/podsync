@@ -9,9 +9,11 @@ import 'core/directory.dart';
 import 'core/downloads.dart';
 import 'core/library.dart';
 import 'core/player.dart';
+import 'core/updater.dart';
 import 'ui/desktop.dart';
 import 'ui/mobile.dart';
 import 'ui/store_view.dart';
+import 'ui/update_ui.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +33,7 @@ Future<void> main() async {
   await downloads.start();
   final player = PlayerController(library, downloads: downloads);
   final store = StoreController(StoreDirectory(), library);
+  final updates = UpdateController(library);
   library.startBackground();
 
   runApp(
@@ -40,6 +43,7 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: downloads),
         ChangeNotifierProvider.value(value: store),
         ChangeNotifierProvider.value(value: player),
+        ChangeNotifierProvider.value(value: updates),
       ],
       child: const PodSyncApp(),
     ),
@@ -79,7 +83,9 @@ class PodSyncApp extends StatelessWidget {
             .copyWith(textScaler: TextScaler.linear(s.textScale)),
         child: child!,
       ),
-      home: Platform.isAndroid ? const MobileShell() : const DesktopShell(),
+      home: UpdateGate(
+        child: Platform.isAndroid ? const MobileShell() : const DesktopShell(),
+      ),
     );
   }
 }

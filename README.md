@@ -36,3 +36,7 @@ Download `PodSync-Setup-x64.exe` from the latest GitHub Actions run and run it. 
 ## Status
 
 Tested: the server (smoke test), feed parsing, both sync merges, the AntennaPod importer against a database built from AntennaPod's real table definitions, a fake gPodder server with two devices, and widget tests that render the desktop, phone and e-ink screens. Not yet done: building and running on any real platform. Nobody has seen these screens on a device, and playback, background audio and the file pickers are untested. Downloads and offline playback are not built.
+
+## Updates
+
+The apps look for new versions on github.com/Madmaxx636/podsync-releases (Settings > Advanced and about). To publish: build both from CI, then `gh release create vX.Y.Z -R Madmaxx636/podsync-releases` with `PodSync-Setup-x64.exe`, `PodSync-android.apk` and `SHA256SUMS.txt`. The checksum file is required; the apps refuse a download that does not match it. Keep `version:` in `app/pubspec.yaml` equal to the release tag.

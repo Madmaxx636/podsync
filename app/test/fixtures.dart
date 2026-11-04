@@ -7,6 +7,7 @@ import 'package:podsync/core/downloads.dart';
 import 'package:podsync/ui/store_view.dart';
 import 'package:podsync/core/library.dart';
 import 'package:podsync/core/player.dart';
+import 'package:podsync/core/updater.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -102,6 +103,13 @@ List<SingleChildWidget> testProviders(
     ),
     ChangeNotifierProvider.value(
       value: player ?? PlayerController(lib, downloads: dm),
+    ),
+    ChangeNotifierProvider.value(
+      value: UpdateController(
+        lib,
+        client: MockClient((r) async => http.Response('{}', 404)),
+        currentVersion: '0.1.0',
+      ),
     ),
   ];
 }

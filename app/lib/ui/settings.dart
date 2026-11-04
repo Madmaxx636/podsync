@@ -8,10 +8,12 @@ import 'package:provider/provider.dart';
 
 import '../core/downloads.dart';
 import '../core/library.dart';
+import '../core/updater.dart';
 import 'account.dart';
 import 'common.dart';
 import 'paged.dart';
 import 'podcast_settings.dart';
+import 'update_ui.dart';
 
 // ---- model -------------------------------------------------------------------
 
@@ -108,6 +110,7 @@ List<SettingsCategory> settingsCategories(
   Library lib,
   DownloadManager dm, {
   required bool android,
+  UpdateController? updates,
 }) {
   ToggleItem tog(String key, String title, String sub) => ToggleItem(
     title,
@@ -763,7 +766,26 @@ List<SettingsCategory> settingsCategories(
       'Reset, data location',
       Icons.info_outline,
       [
-        InfoItem('Version', 'PodSync 0.1.0'),
+        InfoItem('Version', 'PodSync ${updates?.current ?? ''}'.trim()),
+        tog(
+          'updateCheck',
+          'Check for updates',
+          'Looks for a new release when the app opens',
+        ),
+        if (updates != null)
+          ActionItem(
+            'Check for updates now',
+            updates.checking
+                ? 'Checking…'
+                : (updates.error ??
+                      updates.message ??
+                      'Releases come from github.com/$releasesRepo'),
+            (c) async {
+              final up = c.read<UpdateController>();
+              await up.check(manual: true);
+              if (c.mounted && up.available != null) await showUpdateDialog(c);
+            },
+          ),
         InfoItem(
           'Library',
           '${lib.subscriptions.length} podcasts, ${lib.episodes.length} episodes',
@@ -859,6 +881,7 @@ class SettingsHome extends StatelessWidget {
       lib,
       context.watch<DownloadManager>(),
       android: Platform.isAndroid,
+      updates: context.watch<UpdateController>(),
     );
     final eink = lib.einkMode;
     Widget row(BuildContext c, SettingsCategory cat) => InkWell(
@@ -936,6 +959,7 @@ class SettingsItems extends StatelessWidget {
       lib,
       context.watch<DownloadManager>(),
       android: Platform.isAndroid,
+      updates: context.watch<UpdateController>(),
     ).firstWhere((c) => c.title == categoryTitle);
     if (lib.einkMode) {
       return PagedList<SettingItem>(
@@ -967,6 +991,7 @@ class _SettingsPaneState extends State<SettingsPane> {
       lib,
       context.watch<DownloadManager>(),
       android: Platform.isAndroid,
+      updates: context.watch<UpdateController>(),
     );
     if (!cats.any((c) => c.title == selected)) selected = cats.first.title;
     final scheme = Theme.of(context).colorScheme;

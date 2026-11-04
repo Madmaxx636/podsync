@@ -9,6 +9,10 @@ class AppSettings {
     'compact': false,
     'showArtwork': true,
     'dateStyle': 'mdy', // mdy | dmy | iso
+    // Updates (this device)
+    'updateCheck': true,
+    'updateSkipped':
+        '', // a version the person chose not to be told about again
     // Network (this device)
     'requestTimeoutSec': 30,
     'userAgent': '',
@@ -166,6 +170,8 @@ class AppSettings {
   String get dateStyle => _get('dateStyle');
   int get requestTimeoutSec => _get('requestTimeoutSec');
   String get userAgent => _get('userAgent');
+  bool get updateCheck => _get('updateCheck');
+  String get updateSkipped => _get('updateSkipped');
   bool get refreshOnLaunch => _get('refreshOnLaunch');
   int get refreshIntervalMin => _get('refreshIntervalMin');
   bool get syncOnStart => _get('syncOnStart');
