@@ -8,7 +8,7 @@
 
     <application
         android:usesCleartextTraffic="true"
-        android:label="podsync"
+        android:label="PodSync"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

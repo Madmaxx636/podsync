@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import 'core/directory.dart';
@@ -32,6 +33,14 @@ Future<void> main() async {
   final player = PlayerController(library, downloads: downloads);
   final store = StoreController(StoreDirectory(), library);
   library.startBackground();
+
+  // Android 13 and later hide the playback notification (and its lock-screen controls) until allowed.
+  if (Platform.isAndroid) {
+    Permission.notification.request().catchError((Object e) {
+      debugPrint('notification permission: $e');
+      return PermissionStatus.denied;
+    });
+  }
 
   runApp(
     MultiProvider(

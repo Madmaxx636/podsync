@@ -12,3 +12,8 @@ server/podsync-server
 
 # Installer output
 PodSync-Setup-x64.exe
+
+# Android signing key: never commit
+.signing/
+
+PodSync-android.apk
