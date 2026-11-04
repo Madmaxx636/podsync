@@ -1,0 +1,1195 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../core/feed.dart';
+import '../core/library.dart';
+import '../core/models.dart';
+import '../core/player.dart';
+import 'settings.dart';
+import 'common.dart';
+import 'paged.dart';
+import 'podcast_settings.dart';
+
+enum _Section { queue, episodes, podcasts, add, settings }
+
+const _titles = {
+  _Section.queue: 'Queue',
+  _Section.episodes: 'Episodes',
+  _Section.podcasts: 'Subscriptions',
+  _Section.add: 'Add podcast',
+  _Section.settings: 'Settings',
+};
+
+const _icons = {
+  _Section.queue: Icons.queue_music,
+  _Section.episodes: Icons.library_music,
+  _Section.podcasts: Icons.subscriptions,
+  _Section.add: Icons.add,
+  _Section.settings: Icons.settings,
+};
+
+/// Phone/tablet UI modelled on AntennaPod: a navigation drawer, episode rows
+/// with a play button on the right, and a mini player docked at the bottom.
+/// With e-ink mode on, the drawer becomes a row of text tabs and every list
+/// is paged instead of scrolled.
+class MobileShell extends StatefulWidget {
+  const MobileShell({super.key});
+
+  @override
+  State<MobileShell> createState() => _MobileShellState();
+}
+
+class _MobileShellState extends State<MobileShell> {
+  _Section section = _Section.queue;
+  final List<_Section> _previous =
+      []; // sections visited before this one, for the back button
+
+  void _select(_Section s) {
+    if (s == section) return;
+    setState(() {
+      _previous.add(section);
+      section = s;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<Library>();
+    final eink = lib.einkMode;
+
+    final body = switch (section) {
+      _Section.queue => const QueueView(),
+      _Section.episodes => const EpisodesView(),
+      _Section.podcasts => const SubscriptionsView(),
+      _Section.add => const AddPodcastView(),
+      _Section.settings => const SettingsHome(),
+    };
+
+    // Back goes to the section you came from; from the first one it leaves the app.
+    return PopScope(
+      canPop: _previous.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _previous.isNotEmpty) {
+          setState(() => section = _previous.removeLast());
+        }
+      },
+      child: Scaffold(
+        appBar: eink
+            ? null
+            : AppBar(
+                title: Text(_titles[section]!),
+                actions: [
+                  if (lib.signedIn)
+                    IconButton(
+                      tooltip: 'Sync',
+                      onPressed: lib.syncing
+                          ? null
+                          : () async {
+                              await lib.sync();
+                              await lib.refreshAll();
+                            },
+                      icon: const Icon(Icons.sync),
+                    ),
+                ],
+              ),
+        drawer: eink
+            ? null
+            : Drawer(
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      const DrawerHeader(
+                        margin: EdgeInsets.zero,
+                        child: Align(
+                          alignment: Alignment.bottomLeft,
+                          child: Text(
+                            'PodSync',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                      for (final s in _Section.values)
+                        ListTile(
+                          leading: Icon(_icons[s]),
+                          title: Text(_titles[s]!),
+                          selected: s == section,
+                          onTap: () {
+                            _select(s);
+                            Navigator.pop(context);
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+        body: SafeArea(
+          top: eink,
+          bottom: false,
+          child: Column(
+            children: [
+              if (eink) _EinkTabs(section: section, onSelect: _select),
+              Expanded(child: body),
+            ],
+          ),
+        ),
+        bottomNavigationBar: const MiniPlayer(),
+      ),
+    );
+  }
+}
+
+class _EinkTabs extends StatelessWidget {
+  const _EinkTabs({required this.section, required this.onSelect});
+  final _Section section;
+  final ValueChanged<_Section> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(width: 2)),
+      ),
+      child: Row(
+        children: [
+          for (final s in _Section.values)
+            Expanded(
+              child: InkWell(
+                onTap: () => onSelect(s),
+                child: Container(
+                  height: 52,
+                  alignment: Alignment.center,
+                  color: s == section ? Colors.black : null,
+                  child: Text(
+                    s == _Section.podcasts
+                        ? 'Podcasts'
+                        : (s == _Section.add ? 'Add' : _titles[s]!),
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: s == section ? Colors.white : Colors.black,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// ListView normally, a [PagedList] in e-ink mode.
+Widget adaptiveList<T>(
+  BuildContext context,
+  List<T> items,
+  double extent,
+  Widget Function(BuildContext, T) build, {
+  String empty = 'Nothing here',
+}) {
+  final lib = context.read<Library>();
+  if (lib.einkMode) {
+    // `extent` is the row height at the default size; the e-ink "row size" setting scales it.
+    return PagedList<T>(
+      items: items,
+      itemExtent: extent * lib.settings.einkRowHeight / 88,
+      itemBuilder: build,
+      empty: empty,
+    );
+  }
+  if (items.isEmpty) {
+    return Center(
+      child: Text(empty, style: Theme.of(context).textTheme.titleMedium),
+    );
+  }
+  return ListView.builder(
+    itemCount: items.length,
+    itemExtent: extent,
+    itemBuilder: (c, i) => build(c, items[i]),
+  );
+}
+
+// ---- lists -----------------------------------------------------------------
+
+class QueueView extends StatelessWidget {
+  const QueueView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<Library>();
+    final items = lib.queueEpisodes;
+    if (!lib.einkMode && items.isNotEmpty) {
+      return ReorderableListView.builder(
+        itemCount: items.length,
+        onReorderItem: (from, to) =>
+            lib.reorderQueue(from, to > from ? to + 1 : to),
+        itemBuilder: (c, i) => Dismissible(
+          key: ValueKey(items[i].id),
+          onDismissed: (_) => lib.removeFromQueue(items[i].id),
+          background: Container(color: Colors.red.shade400),
+          child: SizedBox(height: 88, child: EpisodeTile(items[i])),
+        ),
+      );
+    }
+    return adaptiveList(
+      context,
+      items,
+      88,
+      (c, e) => EpisodeTile(e),
+      empty: 'Your queue is empty',
+    );
+  }
+}
+
+enum _EpisodeFilter { unplayed, all, favorites, history }
+
+class EpisodesView extends StatefulWidget {
+  const EpisodesView({super.key});
+
+  @override
+  State<EpisodesView> createState() => _EpisodesViewState();
+}
+
+class _EpisodesViewState extends State<EpisodesView> {
+  _EpisodeFilter filter = _EpisodeFilter.unplayed;
+
+  static const _labels = {
+    _EpisodeFilter.unplayed: 'Unplayed',
+    _EpisodeFilter.all: 'All',
+    _EpisodeFilter.favorites: 'Favorites',
+    _EpisodeFilter.history: 'History',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<Library>();
+    final items = switch (filter) {
+      _EpisodeFilter.unplayed =>
+        lib.allEpisodes.where((e) => !lib.progressOf(e.id).played).toList(),
+      _EpisodeFilter.all => lib.allEpisodes,
+      _EpisodeFilter.favorites => lib.favoriteEpisodes,
+      _EpisodeFilter.history => lib.historyEpisodes,
+    };
+    final empty = switch (filter) {
+      _EpisodeFilter.favorites => 'No favorites yet',
+      _EpisodeFilter.history => 'Nothing played yet',
+      _ =>
+        lib.subscriptions.isEmpty
+            ? 'Subscribe to a podcast to see episodes'
+            : 'No episodes',
+    };
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+          child: Row(
+            children: [
+              for (final f in _EpisodeFilter.values)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: ChoiceChip(
+                      label: SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                          _labels[f]!,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      showCheckmark: false,
+                      visualDensity: VisualDensity.compact,
+                      selected: filter == f,
+                      onSelected: (_) => setState(() => filter = f),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () async {
+              await lib.sync();
+              await lib.refreshAll();
+            },
+            child: adaptiveList(
+              context,
+              items,
+              88,
+              (c, e) => EpisodeTile(e),
+              empty: empty,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class SubscriptionsView extends StatelessWidget {
+  const SubscriptionsView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<Library>();
+    final subs = lib.subscriptions;
+    final eink = lib.einkMode;
+    if (eink || subs.isEmpty) {
+      return adaptiveList(
+        context,
+        subs,
+        88,
+        (c, p) => _PodcastRow(p),
+        empty: 'No subscriptions yet',
+      );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.all(8),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 140,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+      ),
+      itemCount: subs.length,
+      itemBuilder: (c, i) {
+        final p = subs[i];
+        final unplayed = lib
+            .episodesOf(p.feedUrl)
+            .where((e) => !lib.progressOf(e.id).played)
+            .length;
+        return InkWell(
+          onTap: () => Navigator.push(
+            c,
+            MaterialPageRoute(builder: (_) => PodcastScreen(p.feedUrl)),
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Art(p.imageUrl, size: 140),
+              if (unplayed > 0)
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(c).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$unplayed',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PodcastRow extends StatelessWidget {
+  const _PodcastRow(this.p);
+  final Podcast p;
+
+  @override
+  Widget build(BuildContext context) {
+    final eink = context.read<Library>().einkMode;
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PodcastScreen(p.feedUrl)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Art(p.imageUrl, size: 64, gray: eink),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    p.displayTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (p.author.isNotEmpty)
+                    Text(
+                      p.author,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---- episode row -------------------------------------------------------------
+
+class EpisodeTile extends StatelessWidget {
+  const EpisodeTile(this.e, {super.key});
+  final Episode e;
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<Library>();
+    final player = context.read<PlayerController>();
+    final eink = lib.einkMode;
+    final pr = lib.progressOf(e.id);
+    final podcast = lib.podcasts[e.feedUrl];
+    final dur = e.durationMs > 0 ? e.durationMs : pr.durationMs;
+    final fraction = dur > 0 ? (pr.positionMs / dur).clamp(0.0, 1.0) : 0.0;
+    final isCurrent = context.select<PlayerController, bool>(
+      (p) => p.current?.id == e.id,
+    );
+    final isPlaying = context.select<PlayerController, bool>(
+      (p) => p.current?.id == e.id && p.playing,
+    );
+    final meta = [
+      fmtDate(e.published, year: false),
+      if (dur > 0) fmtDurationMs(dur),
+      if (pr.played)
+        'Played'
+      else if (pr.positionMs > 0)
+        '${fmtDurationMs(dur - pr.positionMs)} left',
+      if (lib.isFavorite(e.id)) '\u2605',
+    ].where((s) => s.isNotEmpty).join(' • ');
+
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => EpisodeScreen(e.id)),
+      ),
+      onLongPress: eink ? null : () => _menu(context, lib),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 12, right: 4, top: 6, bottom: 6),
+        child: Row(
+          children: [
+            Art(e.imageUrl, size: 56, gray: eink),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    podcast?.title ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  Text(
+                    e.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: pr.played
+                          ? FontWeight.normal
+                          : FontWeight.w600,
+                      color: pr.played ? Theme.of(context).disabledColor : null,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(meta, style: Theme.of(context).textTheme.bodySmall),
+                  if (fraction > 0 && !pr.played)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: LinearProgressIndicator(
+                        value: fraction,
+                        minHeight: 2,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            IconButton(
+              iconSize: 36,
+              tooltip: isPlaying ? 'Pause' : 'Play',
+              icon: Icon(
+                isPlaying
+                    ? Icons.pause_circle_outline
+                    : Icons.play_circle_outline,
+              ),
+              onPressed: () => isCurrent ? player.toggle() : player.play(e),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _menu(BuildContext context, Library lib) {
+    final inQueue = lib.queue.contains(e.id);
+    final played = lib.progressOf(e.id).played;
+    showModalBottomSheet(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.playlist_play),
+              title: const Text('Play next'),
+              onTap: () {
+                lib.enqueue(e.id, next: true);
+                Navigator.pop(c);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                inQueue ? Icons.remove_from_queue : Icons.add_to_queue,
+              ),
+              title: Text(inQueue ? 'Remove from queue' : 'Add to queue'),
+              onTap: () {
+                inQueue ? lib.removeFromQueue(e.id) : lib.enqueue(e.id);
+                Navigator.pop(c);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                lib.isFavorite(e.id) ? Icons.star : Icons.star_border,
+              ),
+              title: Text(
+                lib.isFavorite(e.id)
+                    ? 'Remove from favorites'
+                    : 'Add to favorites',
+              ),
+              onTap: () {
+                lib.setFavorite(e.id, !lib.isFavorite(e.id));
+                Navigator.pop(c);
+              },
+            ),
+            ListTile(
+              leading: Icon(played ? Icons.visibility_off : Icons.check),
+              title: Text(played ? 'Mark as unplayed' : 'Mark as played'),
+              onTap: () {
+                lib.markPlayed(e.id, !played);
+                Navigator.pop(c);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---- detail screens ----------------------------------------------------------
+
+class EpisodeScreen extends StatefulWidget {
+  const EpisodeScreen(this.id, {super.key});
+  final String id;
+
+  @override
+  State<EpisodeScreen> createState() => _EpisodeScreenState();
+}
+
+class _EpisodeScreenState extends State<EpisodeScreen> {
+  bool showChapters = false;
+
+  Future<void> _playFrom(PlayerController player, Episode e, Chapter c) async {
+    if (player.current?.id != e.id) await player.play(e);
+    await player.seek(Duration(milliseconds: c.startMs));
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const PlayerScreen()),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final id = widget.id;
+    final lib = context.watch<Library>();
+    final player = context.read<PlayerController>();
+    final e = lib.episodes[id];
+    if (e == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(child: Text('Episode not found')),
+      );
+    }
+    final eink = lib.einkMode;
+    final inQueue = lib.queue.contains(id);
+    final played = lib.progressOf(id).played;
+    final fav = lib.isFavorite(id);
+
+    final header = Padding(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Art(e.imageUrl, size: eink ? 72 : 96, gray: eink),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  e.title,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  '${lib.podcastTitle(e.feedUrl)}\n${fmtDate(e.published)}  ${fmtDurationMs(e.durationMs)}',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    final actions = Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        FilledButton.icon(
+          onPressed: () {
+            player.play(e);
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PlayerScreen()),
+            );
+          },
+          icon: const Icon(Icons.play_arrow),
+          label: const Text('Play'),
+        ),
+        OutlinedButton(
+          onPressed: () => inQueue ? lib.removeFromQueue(id) : lib.enqueue(id),
+          child: Text(inQueue ? 'Remove from queue' : 'Add to queue'),
+        ),
+        OutlinedButton(
+          onPressed: () => lib.markPlayed(id, !played),
+          child: Text(played ? 'Unplayed' : 'Played'),
+        ),
+        OutlinedButton.icon(
+          onPressed: () => lib.setFavorite(id, !fav),
+          icon: Icon(fav ? Icons.star : Icons.star_border),
+          label: Text(fav ? 'Favorite' : 'Favorite?'),
+        ),
+        if (e.chapters.isNotEmpty)
+          OutlinedButton(
+            onPressed: () => setState(() => showChapters = !showChapters),
+            child: Text(
+              showChapters ? 'Show notes' : 'Chapters (${e.chapters.length})',
+            ),
+          ),
+      ],
+    );
+
+    final Widget content = showChapters
+        ? adaptiveList(context, e.chapters, 56, (c, ch) {
+            return InkWell(
+              onTap: () => _playFrom(player, e, ch),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 72,
+                      child: Text(
+                        fmtDuration(Duration(milliseconds: ch.startMs)),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        ch.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          })
+        : (eink
+              ? PagedText(e.description)
+              : SingleChildScrollView(child: SelectableText(e.description)));
+
+    return Scaffold(
+      appBar: AppBar(title: Text(lib.podcastTitle(e.feedUrl))),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: actions,
+            ),
+            const Divider(),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: content,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class PodcastScreen extends StatefulWidget {
+  const PodcastScreen(this.feedUrl, {super.key});
+  final String feedUrl;
+
+  @override
+  State<PodcastScreen> createState() => _PodcastScreenState();
+}
+
+class _PodcastScreenState extends State<PodcastScreen> {
+  bool busy = false;
+
+  Future<void> _toggle(Library lib) async {
+    setState(() => busy = true);
+    try {
+      if (lib.isSubscribed(widget.feedUrl)) {
+        lib.unsubscribe(widget.feedUrl);
+      } else {
+        await lib.subscribe(widget.feedUrl);
+      }
+    } catch (e) {
+      if (mounted) showSnack(context, 'Could not subscribe: $e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<Library>();
+    final p = lib.podcasts[widget.feedUrl];
+    final eps = lib
+        .episodesOf(widget.feedUrl)
+        .where((e) => !lib.settings.hidePlayed || !lib.progressOf(e.id).played)
+        .toList();
+    final subscribed = lib.isSubscribed(widget.feedUrl);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(p?.displayTitle ?? 'Podcast'),
+        actions: [
+          if (subscribed)
+            IconButton(
+              tooltip: 'Podcast settings',
+              icon: const Icon(Icons.tune),
+              onPressed: () => showPodcastSettings(context, widget.feedUrl),
+            ),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Art(p?.imageUrl ?? '', size: 72, gray: lib.einkMode),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      p?.author ?? '',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                  FilledButton(
+                    onPressed: busy ? null : () => _toggle(lib),
+                    child: Text(subscribed ? 'Unsubscribe' : 'Subscribe'),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: adaptiveList(
+                context,
+                eps,
+                88,
+                (c, e) => EpisodeTile(e),
+                empty: 'No episodes',
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: const MiniPlayer(),
+    );
+  }
+}
+
+// ---- add podcast -------------------------------------------------------------
+
+class AddPodcastView extends StatefulWidget {
+  const AddPodcastView({super.key});
+
+  @override
+  State<AddPodcastView> createState() => _AddPodcastViewState();
+}
+
+class _AddPodcastViewState extends State<AddPodcastView> {
+  final controller = TextEditingController();
+  List<SearchResult> results = [];
+  bool busy = false;
+  String? error;
+
+  Future<void> _go() async {
+    final q = controller.text.trim();
+    if (q.isEmpty) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      if (q.startsWith('http://') || q.startsWith('https://')) {
+        // A direct feed address.
+        await context.read<Library>().subscribe(q);
+        if (mounted) {
+          showSnack(context, 'Subscribed');
+          controller.clear();
+        }
+        results = [];
+      } else {
+        results = await searchDirectory(q);
+      }
+    } catch (e) {
+      error = e.toString().replaceFirst('Exception: ', '');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<Library>();
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: TextField(
+            controller: controller,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _go(),
+            decoration: InputDecoration(
+              hintText: 'Search podcasts or paste a feed address',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.search),
+                onPressed: _go,
+              ),
+            ),
+          ),
+        ),
+        if (busy) const LinearProgressIndicator(),
+        if (error != null)
+          Padding(padding: const EdgeInsets.all(12), child: Text(error!)),
+        Expanded(
+          child: adaptiveList(context, results, 88, (c, r) {
+            return InkWell(
+              onTap: () async {
+                // Show the podcast page; subscribing happens there.
+                if (lib.podcasts[r.feedUrl] == null) {
+                  lib.podcasts[r.feedUrl] = Podcast(
+                    feedUrl: r.feedUrl,
+                    title: r.title,
+                    author: r.author,
+                    imageUrl: r.imageUrl,
+                    subscribed: false,
+                  );
+                }
+                try {
+                  await lib.refreshFeed(r.feedUrl);
+                } catch (_) {}
+                if (c.mounted) {
+                  Navigator.push(
+                    c,
+                    MaterialPageRoute(builder: (_) => PodcastScreen(r.feedUrl)),
+                  );
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    Art(r.imageUrl, size: 64, gray: lib.einkMode),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            r.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            r.author,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (lib.isSubscribed(r.feedUrl)) const Icon(Icons.check),
+                  ],
+                ),
+              ),
+            );
+          }, empty: 'Search for a podcast to get started'),
+        ),
+      ],
+    );
+  }
+}
+
+// ---- player ------------------------------------------------------------------
+
+class MiniPlayer extends StatelessWidget {
+  const MiniPlayer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.watch<PlayerController>();
+    final lib = context.read<Library>();
+    final e = player.current;
+    if (e == null) return const SizedBox.shrink();
+    final total = player.duration.inMilliseconds;
+    return Material(
+      elevation: lib.einkMode ? 0 : 8,
+      color: Theme.of(context).colorScheme.surface,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          decoration: lib.einkMode
+              ? const BoxDecoration(border: Border(top: BorderSide(width: 2)))
+              : null,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              InkWell(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PlayerScreen()),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+                  child: Row(
+                    children: [
+                      Art(e.imageUrl, size: 44, gray: lib.einkMode),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              e.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              lib.podcastTitle(e.feedUrl),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        iconSize: 32,
+                        icon: Icon(
+                          player.playing ? Icons.pause : Icons.play_arrow,
+                        ),
+                        onPressed: player.toggle,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              LinearProgressIndicator(
+                value: total > 0
+                    ? (player.position.inMilliseconds / total).clamp(0.0, 1.0)
+                    : 0,
+                minHeight: 2,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class PlayerScreen extends StatelessWidget {
+  const PlayerScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final player = context.watch<PlayerController>();
+    final lib = context.watch<Library>();
+    final e = player.current;
+    final eink = lib.einkMode;
+    if (e == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(child: Text('Nothing playing')),
+      );
+    }
+    final total = player.duration.inMilliseconds.toDouble();
+    final pos = player.position.inMilliseconds
+        .toDouble()
+        .clamp(0, total > 0 ? total : 1)
+        .toDouble();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(lib.podcastTitle(e.feedUrl)),
+        actions: [
+          IconButton(
+            tooltip: 'Show notes',
+            icon: const Icon(Icons.notes),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => EpisodeScreen(e.id)),
+            ),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: Art(
+                    e.imageUrl,
+                    size: eink ? 220 : 280,
+                    radius: 8,
+                    gray: eink,
+                  ),
+                ),
+              ),
+              Text(
+                e.title,
+                textAlign: TextAlign.center,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (player.error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(player.error!),
+                ),
+              Slider(
+                value: pos,
+                max: total > 0 ? total : 1,
+                onChanged: total > 0
+                    ? (v) => player.seek(Duration(milliseconds: v.round()))
+                    : null,
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(fmtDuration(player.position)),
+                  Text(
+                    total > 0
+                        ? '-${fmtDuration(player.duration - player.position)}'
+                        : '',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  IconButton(
+                    iconSize: 40,
+                    tooltip: 'Back ${lib.skipBackSec}s',
+                    icon: const Icon(Icons.replay_10),
+                    onPressed: player.skipBack,
+                  ),
+                  IconButton.filled(
+                    iconSize: 52,
+                    icon: Icon(player.playing ? Icons.pause : Icons.play_arrow),
+                    onPressed: player.toggle,
+                  ),
+                  IconButton(
+                    iconSize: 40,
+                    tooltip: 'Forward ${lib.skipForwardSec}s',
+                    icon: const Icon(Icons.forward_30),
+                    onPressed: player.skipForward,
+                  ),
+                  IconButton(
+                    iconSize: 40,
+                    tooltip: 'Next in queue',
+                    icon: const Icon(Icons.skip_next),
+                    onPressed: player.next,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
+                  final i = speeds.indexWhere(
+                    (s) => (s - lib.speedFor(e.feedUrl)).abs() < 0.01,
+                  );
+                  player.setSpeed(speeds[(i + 1) % speeds.length]);
+                },
+                child: Text('Speed ${lib.speedFor(e.feedUrl)}×'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

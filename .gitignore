@@ -1,0 +1,11 @@
+# Build output and local data
+build/
+dist/
+.dart_tool/
+*.db
+*.db-wal
+*.db-shm
+server/podsync-server
+.idea/
+*.iml
+.DS_Store
