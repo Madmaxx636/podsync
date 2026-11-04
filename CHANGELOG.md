@@ -31,3 +31,6 @@ First testable build.
 - Server rebuilt for Docker: a ~20 MB image, `docker compose up -d`, data in one volume. Many people per server with isolated data, an admin command line (`user add/list/passwd/delete`, `backup`), self-registration you can switch off, hashed session tokens, login throttling, per-device sign-out, and password change. See server/README.md.
 - The app shows the server's own error sentences and signs out on the server too.
 
+- Tested on an Android 15 emulator in normal and e-ink mode, against a running server (sign-up, sync, streaming, download, offline playback). Fixed what that turned up: the e-ink play button was a black circle with no icon; the Episodes filter chips were cut off ("Offli…") and the selected one was unreadable on e-ink; episode rows with a two-line title and a progress bar overflowed by a few pixels; the page buttons used coloured emoji arrows; the episode screen said "Favorite?".
+- A proper empty Up Next screen: says what the queue is for and offers "Find podcasts" (no subscriptions yet) or "Browse episodes".
+- The Android APK now includes x86_64 as well as ARM, so it also installs on emulators and Chromebooks.

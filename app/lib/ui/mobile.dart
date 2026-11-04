@@ -71,7 +71,10 @@ class _MobileShellState extends State<MobileShell> {
     final eink = lib.einkMode;
 
     final body = switch (section) {
-      _Section.queue => const QueueView(),
+      _Section.queue => QueueView(
+        onFindPodcasts: () => _select(_Section.add),
+        onBrowseEpisodes: () => _select(_Section.episodes),
+      ),
       _Section.episodes => const EpisodesView(),
       _Section.podcasts => const SubscriptionsView(),
       _Section.add => const AddPodcastView(),
@@ -292,14 +295,23 @@ Widget adaptiveList<T>(
 // ---- lists -----------------------------------------------------------------
 
 class QueueView extends StatelessWidget {
-  const QueueView({super.key});
+  const QueueView({super.key, this.onFindPodcasts, this.onBrowseEpisodes});
+
+  final VoidCallback? onFindPodcasts;
+  final VoidCallback? onBrowseEpisodes;
 
   @override
   Widget build(BuildContext context) {
     final lib = context.watch<Library>();
     final items = lib.queueEpisodes;
     final Widget list;
-    if (!lib.einkMode && items.isNotEmpty) {
+    if (items.isEmpty) {
+      list = _EmptyQueue(
+        hasPodcasts: lib.subscriptions.isNotEmpty,
+        onFindPodcasts: onFindPodcasts,
+        onBrowseEpisodes: onBrowseEpisodes,
+      );
+    } else if (!lib.einkMode) {
       list = ReorderableListView.builder(
         itemCount: items.length,
         onReorderItem: (from, to) =>
@@ -315,19 +327,61 @@ class QueueView extends StatelessWidget {
         ),
       );
     } else {
-      list = adaptiveList(
-        context,
-        items,
-        88,
-        (c, e) => EpisodeTile(e),
-        empty: 'Your queue is empty',
-      );
+      list = adaptiveList(context, items, 88, (c, e) => EpisodeTile(e));
     }
     return Column(
       children: [
         if (items.isNotEmpty || lib.canUndoQueue) const _QueueSummary(),
         Expanded(child: list),
       ],
+    );
+  }
+}
+
+/// First-run and cleared-queue state: says what Up Next is and where to go next.
+class _EmptyQueue extends StatelessWidget {
+  const _EmptyQueue({
+    required this.hasPodcasts,
+    this.onFindPodcasts,
+    this.onBrowseEpisodes,
+  });
+
+  final bool hasPodcasts;
+  final VoidCallback? onFindPodcasts;
+  final VoidCallback? onBrowseEpisodes;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.queue_music, size: 56, color: theme.hintColor),
+            const SizedBox(height: 16),
+            Text('Your queue is empty', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Text(
+              hasPodcasts ? 'Add episodes to play them one after another.' : 'Subscribe to a podcast, then add episodes here to play them one after another.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 24),
+            if (!hasPodcasts && onFindPodcasts != null)
+              FilledButton(
+                onPressed: onFindPodcasts,
+                child: const Text('Find podcasts'),
+              ),
+            if (hasPodcasts && onBrowseEpisodes != null)
+              FilledButton(
+                onPressed: onBrowseEpisodes,
+                child: const Text('Browse episodes'),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -457,6 +511,7 @@ class _EpisodesViewState extends State<EpisodesView> {
   Widget build(BuildContext context) {
     final lib = context.watch<Library>();
     final dm = context.watch<DownloadManager>();
+    final eink = lib.einkMode;
     final items = switch (filter) {
       _EpisodeFilter.unplayed =>
         lib.allEpisodes.where((e) => !lib.progressOf(e.id).played).toList(),
@@ -489,12 +544,18 @@ class _EpisodesViewState extends State<EpisodesView> {
                       child: ChoiceChip(
                         label: SizedBox(
                           width: double.infinity,
-                          child: Text(
-                            _labels[f]!,
-                            textAlign: TextAlign.center,
-                            overflow: TextOverflow.ellipsis,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _labels[f]!,
+                              style: eink && filter == f
+                                  ? const TextStyle(color: Colors.white)
+                                  : null,
+                            ),
                           ),
                         ),
+                        padding: EdgeInsets.zero,
+                        labelPadding: const EdgeInsets.symmetric(horizontal: 2),
                         showCheckmark: false,
                         visualDensity: VisualDensity.compact,
                         selected: filter == f,
@@ -680,7 +741,7 @@ class EpisodeTile extends StatelessWidget {
       ),
       onLongPress: () => _menu(context, lib),
       child: Padding(
-        padding: const EdgeInsets.only(left: 12, right: 4, top: 6, bottom: 6),
+        padding: const EdgeInsets.only(left: 12, right: 4, top: 3, bottom: 3),
         child: Row(
           children: [
             Art(e.imageUrl, size: 56, gray: eink),
@@ -988,7 +1049,7 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
         OutlinedButton.icon(
           onPressed: () => lib.setFavorite(id, !fav),
           icon: Icon(fav ? Icons.star : Icons.star_border),
-          label: Text(fav ? 'Favorite' : 'Favorite?'),
+          label: Text(fav ? 'Unfavorite' : 'Favorite'),
         ),
         OutlinedButton.icon(
           onPressed: dm.isDownloaded(id)
@@ -1383,6 +1444,10 @@ class PlayerScreen extends StatelessWidget {
                   ),
                   IconButton.filled(
                     iconSize: 52,
+                    // The e-ink theme paints every icon button black, which would hide the icon here.
+                    style: IconButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    ),
                     icon: Icon(player.playing ? Icons.pause : Icons.play_arrow),
                     onPressed: player.toggle,
                   ),

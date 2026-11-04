@@ -53,7 +53,7 @@ jobs:
 
       # The build number goes up with every run, so each APK counts as an update of the last.
       - name: Build the APK
-        run: flutter build apk --release --target-platform android-arm,android-arm64 --build-number=${{ github.run_number }}
+        run: flutter build apk --release --target-platform android-arm,android-arm64,android-x64 --build-number=${{ github.run_number }}
 
       - name: Check the APK
         run: |

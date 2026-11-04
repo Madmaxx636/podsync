@@ -123,7 +123,7 @@ void main() {
     await tester.pump();
     expect(find.byType(Scrollable), findsNothing);
     expect(find.textContaining(RegExp(r'^1 / \d+$')), findsOneWidget);
-    await tester.tap(find.text('Next  ▶'));
+    await tester.tap(find.text('Next  →'));
     await tester.pump();
     expect(find.textContaining(RegExp(r'^2 / \d+$')), findsOneWidget);
     expect(tester.takeException(), isNull);

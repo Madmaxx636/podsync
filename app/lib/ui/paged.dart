@@ -38,10 +38,10 @@ class _PagedListState<T> extends State<PagedList<T>> {
         final extent =
             widget.itemExtent *
             max(1.0, MediaQuery.textScalerOf(context).scale(14) / 14);
-        final perPage = ((c.maxHeight - barHeight) / extent).floor().clamp(
-          1,
-          1000,
-        );
+        final inset = MediaQuery.viewPaddingOf(context).bottom;
+        final perPage = ((c.maxHeight - barHeight - inset) / extent)
+            .floor()
+            .clamp(1, 1000);
         final pages = (widget.items.length / perPage).ceil().clamp(1, 100000);
         if (page >= pages) page = pages - 1;
         final start = page * perPage;
@@ -83,35 +83,38 @@ class _PagedListState<T> extends State<PagedList<T>> {
               ),
             ),
             SizedBox(
-              height: barHeight,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: page > 0 ? () => go(-1) : null,
-                      child: const Text(
-                        '◀  Prev',
-                        style: TextStyle(fontSize: 20),
+              height: barHeight + inset,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: inset),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: page > 0 ? () => go(-1) : null,
+                        child: const Text(
+                          '←  Prev',
+                          style: TextStyle(fontSize: 20),
+                        ),
                       ),
                     ),
-                  ),
-                  Text(
-                    '${page + 1} / $pages',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Expanded(
-                    child: TextButton(
-                      onPressed: page < pages - 1 ? () => go(1) : null,
-                      child: const Text(
-                        'Next  ▶',
-                        style: TextStyle(fontSize: 20),
+                    Text(
+                      '${page + 1} / $pages',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: TextButton(
+                        onPressed: page < pages - 1 ? () => go(1) : null,
+                        child: const Text(
+                          'Next  →',
+                          style: TextStyle(fontSize: 20),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -195,7 +198,7 @@ class _PagedTextState extends State<PagedText> {
                     child: TextButton(
                       onPressed: page > 0 ? () => setState(() => page--) : null,
                       child: const Text(
-                        '◀  Prev',
+                        '←  Prev',
                         style: TextStyle(fontSize: 20),
                       ),
                     ),
@@ -213,7 +216,7 @@ class _PagedTextState extends State<PagedText> {
                           ? () => setState(() => page++)
                           : null,
                       child: const Text(
-                        'Next  ▶',
+                        'Next  →',
                         style: TextStyle(fontSize: 20),
                       ),
                     ),
