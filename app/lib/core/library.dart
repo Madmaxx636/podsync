@@ -1143,15 +1143,18 @@ class Library extends ChangeNotifier {
         'device': Platform.operatingSystem,
       }),
     );
-    if (res.statusCode != 200) {
-      throw Exception(
-        res.body.trim().isEmpty ? 'HTTP ${res.statusCode}' : res.body.trim(),
-      );
-    }
+    if (res.statusCode != 200) throw Exception(_serverMessage(res));
     token = jsonDecode(res.body)['token'];
     username = user;
     _syncSeq = 0;
     // First sign-in on a device pushes everything it already has.
+    _markAllForUpload();
+    _changed();
+    await sync();
+  }
+
+  /// Queues everything this device holds for upload to the PodSync server.
+  void _markAllForUpload() {
     for (final s in podcasts.values) {
       _touch('sub', s.feedUrl, s.updatedAt, gpodder: false);
     }
@@ -1166,11 +1169,37 @@ class Library extends ChangeNotifier {
     }
     if (queueUpdatedAt > 0) _touch('queue', 'main', queueUpdatedAt);
     if (prefsUpdatedAt > 0) _touch('setting', 'prefs', prefsUpdatedAt);
-    _changed();
-    await sync();
+  }
+
+  /// The server's explanation of a failure: its {"error": "..."} sentence, else a plain HTTP note.
+  String _serverMessage(http.Response res) {
+    try {
+      final body = jsonDecode(res.body);
+      if (body is Map &&
+          body['error'] is String &&
+          (body['error'] as String).isNotEmpty) {
+        return body['error'] as String;
+      }
+    } catch (_) {
+      // not JSON: fall through
+    }
+    final text = res.body.trim();
+    return text.isEmpty || text.length > 200
+        ? 'The server answered HTTP ${res.statusCode}'
+        : text;
   }
 
   void signOut() {
+    // Tell the server, so this device's session stops working there too. If it cannot be
+    // reached the local sign-out still happens.
+    final old = token;
+    if (old.isNotEmpty && serverUrl.isNotEmpty) {
+      _http
+          .post(_api('/api/logout'), headers: {'Authorization': 'Bearer $old'})
+          .timeout(const Duration(seconds: 10))
+          .then<void>((_) {})
+          .catchError((Object _) {});
+    }
     token = '';
     username = '';
     _syncSeq = 0;
@@ -1286,11 +1315,18 @@ class Library extends ChangeNotifier {
     final newSubs = applyRemote(
       List<Map<String, dynamic>>.from(body['changes']),
     );
+    // A server that is behind what this device last saw has been restored from an older backup.
+    // It already sent back everything it has; now send it everything this device has.
+    final restored = (body['seq'] as int) < _syncSeq;
     _syncSeq = body['seq'];
     // Only clear entries that were not modified again while the request was in flight.
     pushed.forEach((k, at) {
       if (_dirty[k] == at) _dirty.remove(k);
     });
+    if (restored) {
+      _markAllForUpload();
+      Timer(Duration.zero, sync); // after this sync finishes
+    }
     lastSync = DateTime.now();
     // Fetch episodes for subscriptions that arrived from another device.
     for (final f in newSubs) {

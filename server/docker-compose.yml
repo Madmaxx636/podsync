@@ -1,0 +1,28 @@
+# PodSync sync server.
+#   docker compose up -d
+#   docker compose exec podsync podsync-server user add alice
+services:
+  podsync:
+    build: .
+    image: podsync-server:latest
+    container_name: podsync
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Let people create their own accounts. Turn this off ("false") once everyone has one;
+      # you can still add people with `podsync-server user add`.
+      PODSYNC_SIGNUP: "true"
+      # Only "true" if the server sits behind your own reverse proxy (see README).
+      PODSYNC_TRUST_PROXY: "false"
+    volumes:
+      - podsync-data:/data
+    healthcheck:
+      test: ["CMD", "podsync-server", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  podsync-data:

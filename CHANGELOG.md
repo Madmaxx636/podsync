@@ -27,4 +27,7 @@ First testable build.
 - Podcast store redesigned like the iTunes Store: a search bar and category menu, top podcasts as covers, a ranked Top Charts list, Subscribe buttons on every podcast, charts per category and per country. The phone has the same charts as a ranked list.
 - Downloads dropdown next to Up Next, with live progress, waiting and failed downloads (retry or dismiss) and the latest finished ones.
 - Fixed downloads (and feeds) that failed with "Redirect limit exceeded": podcast links that pass through several tracking services are now followed, with cookies, up to 30 hops. Error messages no longer lose words ("ClientRedirect limit exceeded").
+- Android: release builds are signed with a fixed key, the app has an icon and is named PodSync, and it asks for the notification permission Android 13 and later need for playback controls. A GitHub Actions workflow builds the APK; each build updates the last one in place.
+- Server rebuilt for Docker: a ~20 MB image, `docker compose up -d`, data in one volume. Many people per server with isolated data, an admin command line (`user add/list/passwd/delete`, `backup`), self-registration you can switch off, hashed session tokens, login throttling, per-device sign-out, and password change. See server/README.md.
+- The app shows the server's own error sentences and signs out on the server too.
 

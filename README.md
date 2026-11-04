@@ -2,12 +2,12 @@
 
 A podcast app for Android, Linux and Windows. It syncs subscriptions, episode progress, the queue, favorites and playback settings, and it can import an AntennaPod backup and sync with gPodder.
 
-- `server/` — Go + SQLite sync server (`go run . -addr :8080 -db podsync.db`; add `-signup=false` once your account exists)
+- `server/` — multi-user sync server in Go + SQLite, ready to run in Docker (`cd server && docker compose up -d`). See [server/README.md](server/README.md).
 - `app/` — Flutter app. Android uses an AntennaPod-style UI, with an e-ink mode (black and white, paged lists, no scrolling or animation). Linux and Windows use an iTunes-style UI.
 
 ## Run
 
-    cd server && go run . -addr :8080
+    cd server && docker compose up -d      # or: go run . -addr :8080
     cd app && flutter run -d linux      # or windows / an Android device
 
 On Linux you need `libmpv` installed for playback, plus clang, cmake, ninja and the GTK dev packages to build. Open Settings (Android) or Account (desktop) to sign in.
