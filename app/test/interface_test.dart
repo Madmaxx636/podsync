@@ -342,7 +342,7 @@ void main() {
         await tester.pump();
         expect(find.byTooltip('Sleep timer'), findsOneWidget);
         expect(find.byTooltip('Mute'), findsOneWidget);
-        expect(find.textContaining('Speed'), findsOneWidget);
+        expect(find.byTooltip('Playback speed'), findsOneWidget);
 
         rig.lib.setSetting('uiPlayerSleep', false);
         rig.lib.setSetting('uiPlayerVolume', false);
@@ -350,7 +350,7 @@ void main() {
         await tester.pump();
         expect(find.byTooltip('Sleep timer'), findsNothing);
         expect(find.byTooltip('Mute'), findsNothing);
-        expect(find.textContaining('Speed'), findsNothing);
+        expect(find.byTooltip('Playback speed'), findsNothing);
         expect(
           find.byIcon(Icons.play_arrow),
           findsWidgets,

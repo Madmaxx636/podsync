@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import 'package:provider/provider.dart';
@@ -1369,9 +1371,38 @@ class PlayerScreen extends StatelessWidget {
         .clamp(0, total > 0 ? total : 1)
         .toDouble();
 
+    final scheme = Theme.of(context).colorScheme;
+    final speed = lib.speedFor(e.feedUrl);
+    final speedButton = lib.settings.uiPlayerSpeed
+        ? Tooltip(
+            message: 'Playback speed',
+            child: TextButton(
+              onPressed: () {
+                const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
+                final i = speeds.indexWhere((s) => (s - speed).abs() < 0.01);
+                player.setSpeed(speeds[(i + 1) % speeds.length]);
+              },
+              child: Text(
+                '${speed.toStringAsFixed(1)}x',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          )
+        : const SizedBox(width: 48);
+
+    // Laid out like AntennaPod's player: collapse arrow and actions on top, big cover,
+    // episode and podcast title, seek bar with elapsed and remaining time, then the
+    // speed button, rewind, a large play button, fast-forward and skip.
     return Scaffold(
       appBar: AppBar(
-        title: Text(lib.podcastTitle(e.feedUrl)),
+        leading: IconButton(
+          tooltip: 'Close player',
+          icon: const Icon(Icons.keyboard_arrow_down, size: 32),
+          onPressed: () => Navigator.maybePop(context),
+        ),
         actions: [
           if (lib.settings.uiPlayerSleep) const SleepTimerButton(),
           IconButton(
@@ -1385,43 +1416,63 @@ class PlayerScreen extends StatelessWidget {
         ],
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Expanded(
-                child: Center(
-                  child: Art(
-                    e.imageUrl,
-                    size: eink ? 220 : 280,
-                    radius: 8,
-                    gray: eink,
+        child: Column(
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final side = max(0.0, min(c.maxWidth - 32, c.maxHeight - 8));
+                  return Center(
+                    child: Art(e.imageUrl, size: side, radius: 8, gray: eink),
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+              child: Column(
+                children: [
+                  Text(
+                    e.title,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 2),
+                  Text(
+                    lib.podcastTitle(e.feedUrl),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: eink ? null : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  if (player.error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(player.error!, textAlign: TextAlign.center),
+                    ),
+                ],
               ),
-              Text(
-                e.title,
-                textAlign: TextAlign.center,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              if (player.error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(player.error!),
-                ),
-              Slider(
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              child: Slider(
                 value: pos,
                 max: total > 0 ? total : 1,
                 onChanged: total > 0
                     ? (v) => player.seek(Duration(milliseconds: v.round()))
                     : null,
               ),
-              Row(
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(fmtDuration(player.position)),
@@ -1432,10 +1483,14 @@ class PlayerScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  SizedBox(width: 56, child: Center(child: speedButton)),
                   IconButton(
                     iconSize: 40,
                     tooltip: 'Back ${lib.skipBackSec}s',
@@ -1443,11 +1498,13 @@ class PlayerScreen extends StatelessWidget {
                     onPressed: player.skipBack,
                   ),
                   IconButton.filled(
-                    iconSize: 52,
+                    iconSize: 44,
+                    padding: const EdgeInsets.all(14),
                     // The e-ink theme paints every icon button black, which would hide the icon here.
                     style: IconButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                      foregroundColor: scheme.onPrimary,
                     ),
+                    tooltip: player.playing ? 'Pause' : 'Play',
                     icon: Icon(player.playing ? Icons.pause : Icons.play_arrow),
                     onPressed: player.toggle,
                   ),
@@ -1465,8 +1522,11 @@ class PlayerScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              if (lib.settings.uiPlayerVolume)
-                Row(
+            ),
+            if (lib.settings.uiPlayerVolume)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 24, 0),
+                child: Row(
                   children: [
                     IconButton(
                       tooltip: lib.settings.muted ? 'Unmute' : 'Mute',
@@ -1494,19 +1554,9 @@ class PlayerScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-              if (lib.settings.uiPlayerSpeed)
-                TextButton(
-                  onPressed: () {
-                    const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
-                    final i = speeds.indexWhere(
-                      (s) => (s - lib.speedFor(e.feedUrl)).abs() < 0.01,
-                    );
-                    player.setSpeed(speeds[(i + 1) % speeds.length]);
-                  },
-                  child: Text('Speed ${lib.speedFor(e.feedUrl)}×'),
-                ),
-            ],
-          ),
+              ),
+            const SizedBox(height: 8),
+          ],
         ),
       ),
     );
