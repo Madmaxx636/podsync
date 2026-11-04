@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'errors.dart';
 import 'feed.dart';
 import 'gpodder.dart';
 import 'models.dart';
@@ -1092,7 +1093,7 @@ class Library extends ChangeNotifier {
   bool get gpodderEnabled => gServer.isNotEmpty && gUser.isNotEmpty;
   bool get syncEnabled => signedIn || gpodderEnabled;
 
-  String _msg(Object e) => e.toString().replaceFirst('Exception: ', '');
+  String _msg(Object e) => cleanError(e);
 
   Future<void> sync() async {
     if (!syncEnabled || syncing) return;

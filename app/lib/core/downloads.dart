@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'errors.dart';
+import 'http_follow.dart';
 import 'library.dart';
 import 'models.dart';
 
@@ -441,11 +443,17 @@ class DownloadManager extends ChangeNotifier {
       final part = File('$path.part');
       var have = await part.exists() ? await part.length() : 0;
 
-      final req = http.Request('GET', Uri.parse(e.audioUrl))
-        ..headers['User-Agent'] = library.settings.effectiveUserAgent;
-      if (have > 0) req.headers['Range'] = 'bytes=$have-';
+      final headers = {
+        'User-Agent': library.settings.effectiveUserAgent,
+        if (have > 0) 'Range': 'bytes=$have-',
+      };
       final timeout = Duration(seconds: library.settings.requestTimeoutSec);
-      final resp = await _http.send(req).timeout(timeout);
+      final resp = await sendFollowingRedirects(
+        _http,
+        Uri.parse(e.audioUrl),
+        headers: headers,
+        timeout: timeout,
+      );
 
       if (resp.statusCode == 416 && have > 0) {
         // We already have all of it.
@@ -507,12 +515,7 @@ class DownloadManager extends ChangeNotifier {
       await sink?.close();
       info
         ..state = DownloadState.failed
-        ..error = err is TimeoutException
-            ? 'Timed out'
-            : err
-                  .toString()
-                  .replaceFirst('HttpException: ', '')
-                  .replaceFirst('Exception: ', '');
+        ..error = cleanError(err);
       _cancelled.remove(id);
     }
     _changed();

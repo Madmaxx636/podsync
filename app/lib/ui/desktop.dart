@@ -1,9 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../core/feed.dart';
 import '../core/downloads.dart';
 import '../core/library.dart';
 import '../core/models.dart';
@@ -20,6 +20,7 @@ import 'downloads_ui.dart';
 import 'pal.dart';
 import 'podcast_settings.dart';
 import 'settings.dart';
+import 'store_view.dart';
 
 /// A place in the sidebar or a podcast page. Equal places compare equal, so the
 /// back/forward history can tell when you are already there.
@@ -72,8 +73,6 @@ class _DesktopShellState extends State<DesktopShell> {
   final List<_Source> _history = [const _Library('episodes')];
   int _pos = 0;
   String filter = '';
-  String storeQuery = '';
-  List<SearchResult> storeResults = [];
   final FocusNode _searchFocus = FocusNode();
   Episode?
   _detailEpisode; // the one episode selected in the table, for the details pane
@@ -204,6 +203,7 @@ class _DesktopShellState extends State<DesktopShell> {
                   onForward: canGoForward ? _forward : null,
                   onGoToPodcast: (f) => _go(_Show(f)),
                   onCustomize: _customize,
+                  onOpenDownloads: () => _goTo('downloads'),
                 ),
                 Expanded(
                   child: Row(
@@ -393,15 +393,7 @@ class _DesktopShellState extends State<DesktopShell> {
           ],
         );
       case _Store():
-        return _StoreView(
-          initialQuery: storeQuery,
-          initialResults: storeResults,
-          onSearched: (q, r) {
-            storeQuery = q;
-            storeResults = r;
-          },
-          onOpen: goPodcast,
-        );
+        return StoreView(onOpen: goPodcast);
       case _Settings():
         return SettingsPane(
           key: ValueKey(_settingsCategory),
@@ -984,155 +976,6 @@ class _ShowHeaderState extends State<_ShowHeader> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _StoreView extends StatefulWidget {
-  const _StoreView({
-    required this.onOpen,
-    required this.initialQuery,
-    required this.initialResults,
-    required this.onSearched,
-  });
-  final ValueChanged<String> onOpen;
-  final String initialQuery;
-  final List<SearchResult> initialResults;
-  final void Function(String query, List<SearchResult> results)
-  onSearched; // so going back finds the results again
-
-  @override
-  State<_StoreView> createState() => _StoreViewState();
-}
-
-class _StoreViewState extends State<_StoreView> {
-  late final controller = TextEditingController(text: widget.initialQuery);
-  late List<SearchResult> results = widget.initialResults;
-  bool busy = false;
-  String? error;
-
-  Future<void> _go() async {
-    final q = controller.text.trim();
-    if (q.isEmpty) return;
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    try {
-      if (q.startsWith('http://') || q.startsWith('https://')) {
-        await context.read<Library>().subscribe(q);
-        if (mounted) widget.onOpen(q);
-      } else {
-        results = await searchDirectory(q);
-        widget.onSearched(q, results);
-      }
-    } catch (e) {
-      error = e.toString().replaceFirst('Exception: ', '');
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final lib = context.watch<Library>();
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  onSubmitted: (_) => _go(),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                    hintText:
-                        'Search the podcast directory, or paste a feed address',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: busy ? null : _go,
-                child: const Text('Search'),
-              ),
-            ],
-          ),
-        ),
-        if (busy) const LinearProgressIndicator(),
-        if (error != null)
-          Padding(padding: const EdgeInsets.all(12), child: Text(error!)),
-        Expanded(
-          child: ListView.builder(
-            itemCount: results.length,
-            itemBuilder: (c, i) {
-              final r = results[i];
-              return GestureDetector(
-                onSecondaryTapDown: (d) {
-                  lib.podcasts.putIfAbsent(
-                    r.feedUrl,
-                    () => Podcast(
-                      feedUrl: r.feedUrl,
-                      title: r.title,
-                      author: r.author,
-                      imageUrl: r.imageUrl,
-                      subscribed: false,
-                    ),
-                  );
-                  showPodcastMenu(
-                    c,
-                    d.globalPosition,
-                    r.feedUrl,
-                    onOpen: widget.onOpen,
-                  );
-                },
-                child: ListTile(
-                  dense: true,
-                  leading: Art(r.imageUrl, size: 44, radius: 0),
-                  title: Text(
-                    r.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    r.author,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: lib.isSubscribed(r.feedUrl)
-                      ? const Icon(Icons.check)
-                      : null,
-                  onTap: () async {
-                    lib.podcasts.putIfAbsent(
-                      r.feedUrl,
-                      () => Podcast(
-                        feedUrl: r.feedUrl,
-                        title: r.title,
-                        author: r.author,
-                        imageUrl: r.imageUrl,
-                        subscribed: false,
-                      ),
-                    );
-                    try {
-                      await lib.refreshFeed(r.feedUrl);
-                    } catch (_) {}
-                    widget.onOpen(r.feedUrl);
-                  },
-                ),
-              );
-            },
-          ),
-        ),
-      ],
     );
   }
 }

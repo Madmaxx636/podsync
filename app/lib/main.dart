@@ -5,11 +5,13 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:provider/provider.dart';
 
+import 'core/directory.dart';
 import 'core/downloads.dart';
 import 'core/library.dart';
 import 'core/player.dart';
 import 'ui/desktop.dart';
 import 'ui/mobile.dart';
+import 'ui/store_view.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,6 +30,7 @@ Future<void> main() async {
   final downloads = DownloadManager(library);
   await downloads.start();
   final player = PlayerController(library, downloads: downloads);
+  final store = StoreController(StoreDirectory(), library);
   library.startBackground();
 
   runApp(
@@ -35,6 +38,7 @@ Future<void> main() async {
       providers: [
         ChangeNotifierProvider.value(value: library),
         ChangeNotifierProvider.value(value: downloads),
+        ChangeNotifierProvider.value(value: store),
         ChangeNotifierProvider.value(value: player),
       ],
       child: const PodSyncApp(),

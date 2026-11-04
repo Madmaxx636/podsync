@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
 
+import 'http_follow.dart';
 import 'models.dart';
 
 class ParsedFeed {
@@ -20,18 +21,20 @@ Future<ParsedFeed> fetchFeed(
   String userAgent = 'PodSync/0.1',
 }) async {
   final c = client ?? http.Client();
-  final res = await c
-      .get(
-        Uri.parse(feedUrl),
-        headers: {
-          'User-Agent': userAgent,
-          'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-          if (username != null && username.isNotEmpty)
-            'Authorization':
-                'Basic ${base64Encode(utf8.encode('$username:${password ?? ''}'))}',
-        },
-      )
-      .timeout(timeout);
+  // Feed addresses redirect too (feed hosts move, trackers wrap them), so follow more than five hops.
+  final streamed = await sendFollowingRedirects(
+    c,
+    Uri.parse(feedUrl),
+    headers: {
+      'User-Agent': userAgent,
+      'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+      if (username != null && username.isNotEmpty)
+        'Authorization':
+            'Basic ${base64Encode(utf8.encode('$username:${password ?? ''}'))}',
+    },
+    timeout: timeout,
+  );
+  final res = await http.Response.fromStream(streamed).timeout(timeout);
   if (res.statusCode != 200) {
     throw Exception('Feed returned HTTP ${res.statusCode}');
   }

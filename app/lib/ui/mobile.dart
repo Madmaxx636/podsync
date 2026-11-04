@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+
 import 'package:provider/provider.dart';
 
-import '../core/feed.dart';
 import '../core/downloads.dart';
 import '../core/library.dart';
 import '../core/models.dart';
@@ -9,6 +9,7 @@ import '../core/player.dart';
 import 'downloads_ui.dart';
 import 'settings.dart';
 import 'sleep_ui.dart';
+import 'store_view.dart';
 import 'common.dart';
 import 'paged.dart';
 import 'podcast_settings.dart';
@@ -1189,140 +1190,16 @@ class _PodcastScreenState extends State<PodcastScreen> {
 
 // ---- add podcast -------------------------------------------------------------
 
-class AddPodcastView extends StatefulWidget {
+class AddPodcastView extends StatelessWidget {
   const AddPodcastView({super.key});
 
   @override
-  State<AddPodcastView> createState() => _AddPodcastViewState();
-}
-
-class _AddPodcastViewState extends State<AddPodcastView> {
-  final controller = TextEditingController();
-  List<SearchResult> results = [];
-  bool busy = false;
-  String? error;
-
-  Future<void> _go() async {
-    final q = controller.text.trim();
-    if (q.isEmpty) return;
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    try {
-      if (q.startsWith('http://') || q.startsWith('https://')) {
-        // A direct feed address.
-        await context.read<Library>().subscribe(q);
-        if (mounted) {
-          showSnack(context, 'Subscribed');
-          controller.clear();
-        }
-        results = [];
-      } else {
-        results = await searchDirectory(q);
-      }
-    } catch (e) {
-      error = e.toString().replaceFirst('Exception: ', '');
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final lib = context.watch<Library>();
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: TextField(
-            controller: controller,
-            textInputAction: TextInputAction.search,
-            onSubmitted: (_) => _go(),
-            decoration: InputDecoration(
-              hintText: 'Search podcasts or paste a feed address',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.search),
-                onPressed: _go,
-              ),
-            ),
-          ),
-        ),
-        if (busy) const LinearProgressIndicator(),
-        if (error != null)
-          Padding(padding: const EdgeInsets.all(12), child: Text(error!)),
-        Expanded(
-          child: adaptiveList(context, results, 88, (c, r) {
-            return InkWell(
-              onTap: () async {
-                // Show the podcast page; subscribing happens there.
-                if (lib.podcasts[r.feedUrl] == null) {
-                  lib.podcasts[r.feedUrl] = Podcast(
-                    feedUrl: r.feedUrl,
-                    title: r.title,
-                    author: r.author,
-                    imageUrl: r.imageUrl,
-                    subscribed: false,
-                  );
-                }
-                try {
-                  await lib.refreshFeed(r.feedUrl);
-                } catch (_) {}
-                if (c.mounted) {
-                  Navigator.push(
-                    c,
-                    MaterialPageRoute(builder: (_) => PodcastScreen(r.feedUrl)),
-                  );
-                }
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    Art(r.imageUrl, size: 64, gray: lib.einkMode),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            r.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            r.author,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (lib.isSubscribed(r.feedUrl)) const Icon(Icons.check),
-                  ],
-                ),
-              ),
-            );
-          }, empty: 'Search for a podcast to get started'),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => PhoneStore(
+    onOpen: (feed) => Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => PodcastScreen(feed)),
+    ),
+  );
 }
 
 // ---- player ------------------------------------------------------------------

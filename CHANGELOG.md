@@ -23,4 +23,8 @@ First testable build.
 - Interface settings: show or hide the menu bar, sleep timer, volume, Up Next button, speed, search, back/forward arrows and skip buttons on the desktop toolbar; any sidebar section, the counts and the subscriptions list; the episode filters. On the phone: Downloads and Statistics in the menu, the mini player, the sleep timer, volume and speed on the player, the episode filters and the download icon on rows. Right-click the toolbar or sidebar to toggle items, so a hidden menu bar can always be brought back. Settings itself can never be hidden.
 - Keyboard shortcuts no longer depend on the menu bar: they work with it shown, closed or hidden.
 - Fixed: the mini player now hides at once when switched off in Settings.
+- Windows now comes as an installer (`PodSync-Setup-x64.exe`) instead of a zip. It installs for the current user, so it needs no admin rights, adds a Start menu entry (and an optional desktop shortcut) and an uninstaller. Uninstalling keeps your library and downloads.
+- Podcast store redesigned like the iTunes Store: a search bar and category menu, top podcasts as covers, a ranked Top Charts list, Subscribe buttons on every podcast, charts per category and per country. The phone has the same charts as a ranked list.
+- Downloads dropdown next to Up Next, with live progress, waiting and failed downloads (retry or dismiss) and the latest finished ones.
+- Fixed downloads (and feeds) that failed with "Redirect limit exceeded": podcast links that pass through several tracking services are now followed, with cookies, up to 30 hops. Error messages no longer lose words ("ClientRedirect limit exceeded").
 

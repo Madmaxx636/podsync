@@ -15,6 +15,7 @@ const _toolbarToggles = [
   _Toggle('uiSkipButtons', 'Skip and Next Buttons'),
   _Toggle('uiVolume', 'Volume'),
   _Toggle('uiUpNextButton', 'Up Next Button'),
+  _Toggle('uiDownloadsButton', 'Downloads Button'),
   _Toggle('uiSleepTimer', 'Sleep Timer'),
   _Toggle('uiSpeed', 'Speed Button'),
   _Toggle('uiSearch', 'Search Field'),

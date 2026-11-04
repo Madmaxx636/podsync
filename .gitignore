@@ -9,3 +9,6 @@ server/podsync-server
 .idea/
 *.iml
 .DS_Store
+
+# Installer output
+PodSync-Setup-x64.exe

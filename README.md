@@ -29,6 +29,10 @@ Two backends, use either or both:
 
 gPodder timestamps have one-second resolution, so two devices changing the same episode within the same second may resolve either way.
 
+## Windows
+
+Download `PodSync-Setup-x64.exe` from the latest GitHub Actions run and run it. It installs for your user account (no admin rights needed) and can be removed from Settings > Apps. Windows may warn that the app is from an unknown publisher, because it is not code-signed yet: choose More info, then Run anyway.
+
 ## Status
 
 Tested: the server (smoke test), feed parsing, both sync merges, the AntennaPod importer against a database built from AntennaPod's real table definitions, a fake gPodder server with two devices, and widget tests that render the desktop, phone and e-ink screens. Not yet done: building and running on any real platform. Nobody has seen these screens on a device, and playback, background audio and the file pickers are untested. Downloads and offline playback are not built.

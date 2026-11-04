@@ -201,6 +201,11 @@ List<SettingsCategory> settingsCategories(
         tog('uiSkipButtons', 'Skip and next buttons', 'Beside the play button'),
         tog('uiVolume', 'Volume', 'The speaker and slider'),
         tog('uiUpNextButton', 'Up Next button', 'The list icon with the count'),
+        tog(
+          'uiDownloadsButton',
+          'Downloads button',
+          'The dropdown with progress, next to Up Next',
+        ),
         tog('uiSleepTimer', 'Sleep timer', 'The moon button'),
         tog('uiSpeed', 'Speed button', ''),
         tog('uiSearch', 'Search field', ''),
@@ -537,6 +542,13 @@ List<SettingsCategory> settingsCategories(
           'Network timeout',
           'How long to wait for a server',
           _ints([10, 15, 30, 60, 120], _secs),
+        ),
+        TextItem(
+          'Podcast store country',
+          'Two letters, like us, gb or de. Changes which charts the store shows.',
+          () => lib.settings.storeCountry,
+          (v) => lib.setSetting('storeCountry', v.trim().toLowerCase()),
+          hint: 'us',
         ),
         TextItem(
           'User agent',

@@ -22,7 +22,7 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
 
-      # A failing test is reported but does not stop the build, so there is always a zip to try.
+      # A failing test is reported but does not stop the build, so there is always an installer to try.
       - name: Tests
         run: flutter test
         continue-on-error: true
@@ -38,16 +38,45 @@ jobs:
             Copy-Item "$env:WINDIR\System32\$dll" $out
           }
 
-      - name: Zip and checksum
+      - name: Build the installer
         shell: pwsh
+        working-directory: .
         run: |
-          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath ../PodSync-windows-x64.zip
-          $hash = (Get-FileHash ../PodSync-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
-          "$hash  PodSync-windows-x64.zip" | Out-File ../PodSync-windows-x64.zip.sha256 -Encoding ascii
+          choco install innosetup --no-progress -y
+          $version = ((Select-String -Path app/pubspec.yaml -Pattern '^version:\s*(\S+)').Matches[0].Groups[1].Value -split '\+')[0]
+          Write-Host "Version $version"
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" installer\podsync.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          Get-Item PodSync-Setup-x64.exe | Format-List Name, Length
+
+      # Prove the installer works: install silently to a temp folder, check the files, uninstall again.
+      - name: Test the installer
+        shell: pwsh
+        working-directory: .
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'podsync-install-test'
+          $p = Start-Process -FilePath .\PodSync-Setup-x64.exe -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$dir", "/LOG=$env:RUNNER_TEMP\install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install.log" -Tail 40; throw "Installer exited with $($p.ExitCode)" }
+          foreach ($f in 'podsync.exe', 'flutter_windows.dll', 'libmpv-2.dll', 'sqlite3.dll', 'msvcp140.dll', 'data\app.so', 'unins000.exe') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "Missing after install: $f" }
+          }
+          Write-Host "Installed OK:"; Get-ChildItem $dir | Select-Object -First 20 Name, Length
+          $u = Start-Process -FilePath (Join-Path $dir 'unins000.exe') -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+          if ($u.ExitCode -ne 0) { throw "Uninstaller exited with $($u.ExitCode)" }
+          Start-Sleep -Seconds 2
+          if (Test-Path (Join-Path $dir 'podsync.exe')) { throw "podsync.exe still there after uninstall" }
+          Write-Host "Uninstalled OK"
+
+      - name: Checksum
+        shell: pwsh
+        working-directory: .
+        run: |
+          $hash = (Get-FileHash PodSync-Setup-x64.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  PodSync-Setup-x64.exe" | Out-File PodSync-Setup-x64.exe.sha256 -Encoding ascii
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PodSync-windows-x64
+          name: PodSync-windows-installer
           path: |
-            PodSync-windows-x64.zip
-            PodSync-windows-x64.zip.sha256
+            PodSync-Setup-x64.exe
+            PodSync-Setup-x64.exe.sha256

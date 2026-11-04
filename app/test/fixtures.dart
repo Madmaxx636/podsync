@@ -1,6 +1,10 @@
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:podsync/core/directory.dart';
 import 'package:podsync/core/downloads.dart';
+import 'package:podsync/ui/store_view.dart';
 import 'package:podsync/core/library.dart';
 import 'package:podsync/core/player.dart';
 import 'package:provider/provider.dart';
@@ -77,11 +81,25 @@ List<SingleChildWidget> testProviders(
   Library lib, {
   PlayerController? player,
   DownloadManager? downloads,
+  StoreController? store,
 }) {
   final dm = downloads ?? DownloadManager(lib, watchNetwork: false);
   return [
     ChangeNotifierProvider.value(value: lib),
     ChangeNotifierProvider.value(value: dm),
+    ChangeNotifierProvider.value(
+      value:
+          store ??
+          StoreController(
+            // An empty store, so no test reaches for the network.
+            StoreDirectory(
+              client: MockClient(
+                (r) async => http.Response('{"results": [], "feed": {}}', 200),
+              ),
+            ),
+            lib,
+          ),
+    ),
     ChangeNotifierProvider.value(
       value: player ?? PlayerController(lib, downloads: dm),
     ),

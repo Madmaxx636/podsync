@@ -3,6 +3,9 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import '../core/errors.dart';
+
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -470,10 +473,7 @@ Future<void> subscribeByUrl(
     commands.goPodcast(feed);
   } catch (e) {
     if (context.mounted) {
-      showSnack(
-        context,
-        'Could not subscribe: ${e.toString().replaceFirst('Exception: ', '')}',
-      );
+      showSnack(context, 'Could not subscribe: ${cleanError(e)}');
     }
   }
 }

@@ -32,6 +32,7 @@ class AppSettings {
     'uiSkipButtons': true,
     'uiVolume': true,
     'uiUpNextButton': true,
+    'uiDownloadsButton': true,
     'uiSleepTimer': true,
     'uiSpeed': true,
     'uiSearch': true,
@@ -54,6 +55,9 @@ class AppSettings {
     'uiPlayerSpeed': true,
     'uiPhoneFilters': true,
     'uiRowDownloadIcon': true,
+
+    // Podcast store (this device)
+    'storeCountry': 'us',
 
     // Downloads (this device)
     'autoDownloadQueue': false, // keep the next Up Next episodes downloaded
@@ -185,6 +189,7 @@ class AppSettings {
   bool get uiSkipButtons => _get('uiSkipButtons');
   bool get uiVolume => _get('uiVolume');
   bool get uiUpNextButton => _get('uiUpNextButton');
+  bool get uiDownloadsButton => _get('uiDownloadsButton');
   bool get uiSleepTimer => _get('uiSleepTimer');
   bool get uiSpeed => _get('uiSpeed');
   bool get uiSearch => _get('uiSearch');
@@ -209,6 +214,7 @@ class AppSettings {
   bool get uiRowDownloadIcon => _get('uiRowDownloadIcon');
   bool get colStarts => _get('colStarts');
   bool get colDownload => _get('colDownload');
+  String get storeCountry => _get('storeCountry');
   bool get autoDownloadQueue => _get('autoDownloadQueue');
   int get autoDownloadQueueCount => _get('autoDownloadQueueCount');
   bool get autoDownloadNew => _get('autoDownloadNew');

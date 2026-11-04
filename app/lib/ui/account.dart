@@ -3,6 +3,9 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+import '../core/errors.dart';
+
 import 'package:provider/provider.dart';
 
 import '../core/antennapod_import.dart';
@@ -61,7 +64,7 @@ class _AccountPanelState extends State<AccountPanel> {
       await action();
     } catch (e) {
       if (mounted) {
-        showSnack(context, e.toString().replaceFirst('Exception: ', ''));
+        showSnack(context, cleanError(e));
       }
     } finally {
       if (mounted) setState(() => busy = false);

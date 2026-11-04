@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/downloads.dart';
 import '../core/library.dart';
 import '../core/models.dart';
 import '../core/player.dart';
@@ -20,6 +21,7 @@ class DesktopToolbar extends StatelessWidget {
     required this.onForward,
     required this.onGoToPodcast,
     required this.onCustomize,
+    required this.onOpenDownloads,
   });
 
   final ValueChanged<String> onSearch;
@@ -28,6 +30,7 @@ class DesktopToolbar extends StatelessWidget {
   final VoidCallback? onForward;
   final ValueChanged<String> onGoToPodcast;
   final VoidCallback onCustomize; // opens Settings > Interface
+  final VoidCallback onOpenDownloads; // the full Downloads screen
 
   @override
   Widget build(BuildContext context) {
@@ -110,6 +113,8 @@ class DesktopToolbar extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             if (ui.uiUpNextButton) _UpNextButton(onGoToPodcast: onGoToPodcast),
+            if (ui.uiDownloadsButton)
+              _DownloadsButton(onOpenDownloads: onOpenDownloads),
             if (ui.uiSleepTimer) const SleepTimerButton(),
             const SizedBox(width: 4),
             if (ui.uiSpeed)
@@ -558,6 +563,305 @@ class _UpNextRow extends StatelessWidget {
               icon: const Icon(Icons.close),
               onPressed: () => lib.removeFromQueue(episode.id),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The downloads button: a ring while something downloads, and a count of what is running or waiting.
+class _DownloadsButton extends StatelessWidget {
+  const _DownloadsButton({required this.onOpenDownloads});
+  final VoidCallback onOpenDownloads;
+
+  @override
+  Widget build(BuildContext context) {
+    final dm = context.watch<DownloadManager>();
+    final running = dm.activeIds.length + dm.queuedIds.length;
+    final failed = dm.failedIds.length;
+    final busy = dm.activeIds.isNotEmpty;
+    return Badge(
+      isLabelVisible: running > 0 || failed > 0,
+      backgroundColor: running == 0 && failed > 0
+          ? Theme.of(context).colorScheme.error
+          : null,
+      label: Text(running > 0 ? '$running' : '!'),
+      offset: const Offset(-4, 4),
+      child: IconButton(
+        tooltip: busy ? 'Downloads: $running in progress' : 'Downloads',
+        icon: Icon(
+          busy ? Icons.downloading : Icons.download_for_offline_outlined,
+        ),
+        onPressed: () =>
+            showDownloadsPopover(context, onOpenDownloads: onOpenDownloads),
+      ),
+    );
+  }
+}
+
+/// A dropdown like Up Next's, for downloads: what is running with progress, what waits or failed,
+/// and what finished lately.
+Future<void> showDownloadsPopover(
+  BuildContext context, {
+  required VoidCallback onOpenDownloads,
+}) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Close Downloads',
+    barrierColor: Colors.transparent,
+    transitionDuration: Duration.zero,
+    pageBuilder: (c, _, _) => Align(
+      alignment: Alignment.topCenter,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 60),
+        child: _DownloadsPanel(
+          onOpenDownloads: () {
+            Navigator.pop(c);
+            onOpenDownloads();
+          },
+        ),
+      ),
+    ),
+  );
+}
+
+class _DownloadsPanel extends StatelessWidget {
+  const _DownloadsPanel({required this.onOpenDownloads});
+  final VoidCallback onOpenDownloads;
+
+  @override
+  Widget build(BuildContext context) {
+    final dm = context.watch<DownloadManager>();
+    final lib = context.watch<Library>();
+    final pal = Pal.of(context);
+    final active = dm.activeIds;
+    final waiting = dm.queuedIds;
+    final failed = dm.failedIds;
+    // The few most recent finished ones; the full list is on the Downloads screen.
+    final done =
+        (dm.doneIds..sort(
+              (a, b) =>
+                  (dm.infoOf(b)?.at ?? 0).compareTo(dm.infoOf(a)?.at ?? 0),
+            ))
+            .take(5)
+            .toList();
+    final nothing =
+        active.isEmpty && waiting.isEmpty && failed.isEmpty && done.isEmpty;
+
+    Widget section(String t) => Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
+      child: Text(
+        t,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: pal.muted,
+        ),
+      ),
+    );
+
+    Widget iconBtn(IconData icon, String tip, VoidCallback onTap) => IconButton(
+      visualDensity: VisualDensity.compact,
+      iconSize: 16,
+      tooltip: tip,
+      icon: Icon(icon),
+      onPressed: onTap,
+    );
+
+    Widget row(String id, {Widget? trailing}) {
+      final e = lib.episodes[id];
+      final info = dm.infoOf(id);
+      if (e == null || info == null) return const SizedBox.shrink();
+      final detail = switch (info.state) {
+        DownloadState.downloading =>
+          info.total > 0
+              ? '${fmtBytes(info.bytes)} of ${fmtBytes(info.total)}'
+              : fmtBytes(info.bytes),
+        DownloadState.queued => info.error ?? 'Waiting',
+        DownloadState.failed => 'Failed: ${info.error}',
+        DownloadState.done => fmtBytes(info.bytes),
+      };
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(10, 4, 6, 4),
+        child: Row(
+          children: [
+            Art(e.imageUrl, size: 36, radius: 2),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    e.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                      color: pal.text,
+                    ),
+                  ),
+                  Text(
+                    '${lib.podcastTitle(e.feedUrl)} · $detail',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: info.state == DownloadState.failed
+                          ? Theme.of(context).colorScheme.error
+                          : pal.muted,
+                    ),
+                  ),
+                  if (info.state == DownloadState.downloading)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: LinearProgressIndicator(
+                        value: info.fraction,
+                        minHeight: 3,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            ?trailing,
+          ],
+        ),
+      );
+    }
+
+    final summary = [
+      if (active.isNotEmpty) '${active.length} downloading',
+      if (waiting.isNotEmpty) '${waiting.length} waiting',
+      if (failed.isNotEmpty) '${failed.length} failed',
+      '${dm.doneCount} downloaded · ${fmtBytes(dm.totalBytes)}',
+    ].join(' · ');
+
+    return Material(
+      elevation: 12,
+      color: pal.bg,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 460,
+        constraints: const BoxConstraints(maxHeight: 560),
+        decoration: BoxDecoration(
+          border: Border.all(color: pal.rule),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 8, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Downloads',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: pal.text,
+                          ),
+                        ),
+                        Text(
+                          summary,
+                          style: TextStyle(fontSize: 11, color: pal.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (active.isNotEmpty || waiting.isNotEmpty)
+                    TextButton(
+                      onPressed: dm.cancelAll,
+                      child: const Text('Cancel All'),
+                    ),
+                  TextButton(
+                    onPressed: onOpenDownloads,
+                    child: const Text('Show All'),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: pal.rule),
+            if (nothing)
+              Padding(
+                padding: const EdgeInsets.all(28),
+                child: Text(
+                  'Nothing downloading.\nUse the cloud icon on an episode.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: pal.muted),
+                ),
+              )
+            else
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    if (active.isNotEmpty) section('DOWNLOADING'),
+                    for (final id in active)
+                      row(
+                        id,
+                        trailing: iconBtn(
+                          Icons.close,
+                          'Cancel',
+                          () => dm.cancel(id),
+                        ),
+                      ),
+                    if (waiting.isNotEmpty) section('WAITING'),
+                    for (final id in waiting)
+                      row(
+                        id,
+                        trailing: iconBtn(
+                          Icons.close,
+                          'Cancel',
+                          () => dm.cancel(id),
+                        ),
+                      ),
+                    if (failed.isNotEmpty) section('FAILED'),
+                    for (final id in failed)
+                      row(
+                        id,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            iconBtn(Icons.refresh, 'Retry', () => dm.retry(id)),
+                            iconBtn(
+                              Icons.close,
+                              'Dismiss',
+                              () => dm.delete(id),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (done.isNotEmpty) section('RECENTLY DOWNLOADED'),
+                    for (final id in done)
+                      row(
+                        id,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            iconBtn(Icons.play_arrow, 'Play', () {
+                              final e = lib.episodes[id];
+                              if (e != null) {
+                                context.read<PlayerController>().play(e);
+                              }
+                            }),
+                            iconBtn(
+                              Icons.delete_outline,
+                              'Delete download',
+                              () => dm.delete(id),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
