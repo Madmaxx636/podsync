@@ -30,7 +30,10 @@ void main() {
     expect(e.id, 'http://x/feed|g1');
     expect(e.durationMs, (3600 + 120 + 3) * 1000);
     expect(e.description, 'Hello & bye');
-    expect(DateTime.fromMillisecondsSinceEpoch(e.published, isUtc: true), DateTime.utc(2008, 6, 3, 9, 5, 30));
+    expect(
+      DateTime.fromMillisecondsSinceEpoch(e.published, isUtc: true),
+      DateTime.utc(2008, 6, 3, 9, 5, 30),
+    );
   });
 
   test('duration formats', () {
@@ -40,32 +43,62 @@ void main() {
   });
 
   group('sync merge', () {
-    Map<String, dynamic> rec(String type, String key, int at, Map data, {bool deleted = false}) =>
-        {'type': type, 'key': key, 'updated_at': at, 'deleted': deleted, 'data': data};
+    Map<String, dynamic> rec(
+      String type,
+      String key,
+      int at,
+      Map data, {
+      bool deleted = false,
+    }) => {
+      'type': type,
+      'key': key,
+      'updated_at': at,
+      'deleted': deleted,
+      'data': data,
+    };
 
     test('newer remote progress wins, older is ignored', () {
       final lib = Library();
       lib.progress['a'] = Progress(positionMs: 500, updatedAt: 100);
-      lib.applyRemote([rec('progress', 'a', 50, {'pos': 1})]);
+      lib.applyRemote([
+        rec('progress', 'a', 50, {'pos': 1}),
+      ]);
       expect(lib.progress['a']!.positionMs, 500);
-      lib.applyRemote([rec('progress', 'a', 200, {'pos': 9000, 'dur': 10000, 'played': false})]);
+      lib.applyRemote([
+        rec('progress', 'a', 200, {'pos': 9000, 'dur': 10000, 'played': false}),
+      ]);
       expect(lib.progress['a']!.positionMs, 9000);
     });
 
-    test('new subscription is reported for feed fetch; tombstone unsubscribes', () {
-      final lib = Library();
-      final fresh = lib.applyRemote([rec('sub', 'http://f', 10, {'title': 'F'})]);
-      expect(fresh, ['http://f']);
-      expect(lib.isSubscribed('http://f'), isTrue);
-      lib.applyRemote([rec('sub', 'http://f', 20, {}, deleted: true)]);
-      expect(lib.isSubscribed('http://f'), isFalse);
-    });
+    test(
+      'new subscription is reported for feed fetch; tombstone unsubscribes',
+      () {
+        final lib = Library();
+        final fresh = lib.applyRemote([
+          rec('sub', 'http://f', 10, {'title': 'F'}),
+        ]);
+        expect(fresh, ['http://f']);
+        expect(lib.isSubscribed('http://f'), isTrue);
+        lib.applyRemote([rec('sub', 'http://f', 20, {}, deleted: true)]);
+        expect(lib.isSubscribed('http://f'), isFalse);
+      },
+    );
 
     test('queue replaced only by a newer queue', () {
-      final lib = Library()..queue = ['x']..queueUpdatedAt = 100;
-      lib.applyRemote([rec('queue', 'main', 90, {'items': ['y']})]);
+      final lib = Library()
+        ..queue = ['x']
+        ..queueUpdatedAt = 100;
+      lib.applyRemote([
+        rec('queue', 'main', 90, {
+          'items': ['y'],
+        }),
+      ]);
       expect(lib.queue, ['x']);
-      lib.applyRemote([rec('queue', 'main', 110, {'items': ['y', 'z']})]);
+      lib.applyRemote([
+        rec('queue', 'main', 110, {
+          'items': ['y', 'z'],
+        }),
+      ]);
       expect(lib.queue, ['y', 'z']);
     });
   });

@@ -31,64 +31,103 @@ class _PagedListState<T> extends State<PagedList<T>> {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      final swipe = context.read<Library>().settings.einkSwipe;
-      // Bigger text needs taller rows, or fixed-height rows would clip.
-      final extent = widget.itemExtent * max(1.0, MediaQuery.textScalerOf(context).scale(14) / 14);
-      final perPage = ((c.maxHeight - barHeight) / extent).floor().clamp(1, 1000);
-      final pages = (widget.items.length / perPage).ceil().clamp(1, 100000);
-      if (page >= pages) page = pages - 1;
-      final start = page * perPage;
-      final slice = widget.items.skip(start).take(perPage).toList();
+    return LayoutBuilder(
+      builder: (context, c) {
+        final swipe = context.read<Library>().settings.einkSwipe;
+        // Bigger text needs taller rows, or fixed-height rows would clip.
+        final extent =
+            widget.itemExtent *
+            max(1.0, MediaQuery.textScalerOf(context).scale(14) / 14);
+        final perPage = ((c.maxHeight - barHeight) / extent).floor().clamp(
+          1,
+          1000,
+        );
+        final pages = (widget.items.length / perPage).ceil().clamp(1, 100000);
+        if (page >= pages) page = pages - 1;
+        final start = page * perPage;
+        final slice = widget.items.skip(start).take(perPage).toList();
 
-      void go(int delta) {
-        final n = (page + delta).clamp(0, pages - 1);
-        if (n != page) setState(() => page = n);
-      }
+        void go(int delta) {
+          final n = (page + delta).clamp(0, pages - 1);
+          if (n != page) setState(() => page = n);
+        }
 
-      return Column(children: [
-        Expanded(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragEnd: !swipe ? null : (d) {
-              final v = d.primaryVelocity ?? 0;
-              if (v < -200) go(1);
-              if (v > 200) go(-1);
-            },
-            child: widget.items.isEmpty
-                ? Center(child: Text(widget.empty, style: const TextStyle(fontSize: 20)))
-                : Column(children: [
-                    for (final item in slice)
-                      SizedBox(height: extent, child: widget.itemBuilder(context, item)),
-                  ]),
-          ),
-        ),
-        SizedBox(
-          height: barHeight,
-          child: Row(children: [
+        return Column(
+          children: [
             Expanded(
-              child: TextButton(
-                onPressed: page > 0 ? () => go(-1) : null,
-                child: const Text('◀  Prev', style: TextStyle(fontSize: 20)),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragEnd: !swipe
+                    ? null
+                    : (d) {
+                        final v = d.primaryVelocity ?? 0;
+                        if (v < -200) go(1);
+                        if (v > 200) go(-1);
+                      },
+                child: widget.items.isEmpty
+                    ? Center(
+                        child: Text(
+                          widget.empty,
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          for (final item in slice)
+                            SizedBox(
+                              height: extent,
+                              child: widget.itemBuilder(context, item),
+                            ),
+                        ],
+                      ),
               ),
             ),
-            Text('${page + 1} / $pages', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            Expanded(
-              child: TextButton(
-                onPressed: page < pages - 1 ? () => go(1) : null,
-                child: const Text('Next  ▶', style: TextStyle(fontSize: 20)),
+            SizedBox(
+              height: barHeight,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: page > 0 ? () => go(-1) : null,
+                      child: const Text(
+                        '◀  Prev',
+                        style: TextStyle(fontSize: 20),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${page + 1} / $pages',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Expanded(
+                    child: TextButton(
+                      onPressed: page < pages - 1 ? () => go(1) : null,
+                      child: const Text(
+                        'Next  ▶',
+                        style: TextStyle(fontSize: 20),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ]),
-        ),
-      ]);
-    });
+          ],
+        );
+      },
+    );
   }
 }
 
 /// Long text split into screen-sized pages (for episode notes in e-ink mode).
 class PagedText extends StatefulWidget {
-  const PagedText(this.text, {super.key, this.style = const TextStyle(fontSize: 20, height: 1.35)});
+  const PagedText(
+    this.text, {
+    super.key,
+    this.style = const TextStyle(fontSize: 20, height: 1.35),
+  });
   final String text;
   final TextStyle style;
 
@@ -112,7 +151,9 @@ class _PagedTextState extends State<PagedText> {
         pages.add(rest);
         break;
       }
-      var end = tp.getPositionForOffset(Offset(w, h - widget.style.fontSize!)).offset;
+      var end = tp
+          .getPositionForOffset(Offset(w, h - widget.style.fontSize!))
+          .offset;
       final space = rest.lastIndexOf(RegExp(r'\s'), end);
       if (space > end * 0.6) end = space;
       if (end <= 0) end = rest.length.clamp(1, 200);
@@ -124,40 +165,65 @@ class _PagedTextState extends State<PagedText> {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) {
-      final pages = _paginate(c.maxWidth, c.maxHeight - 56);
-      if (page >= pages.length) page = pages.length - 1;
-      return Column(children: [
-        Expanded(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragEnd: (d) {
-              final v = d.primaryVelocity ?? 0;
-              if (v < -200 && page < pages.length - 1) setState(() => page++);
-              if (v > 200 && page > 0) setState(() => page--);
-            },
-            child: Align(alignment: Alignment.topLeft, child: Text(pages[page], style: widget.style)),
-          ),
-        ),
-        SizedBox(
-          height: 56,
-          child: Row(children: [
+    return LayoutBuilder(
+      builder: (context, c) {
+        final pages = _paginate(c.maxWidth, c.maxHeight - 56);
+        if (page >= pages.length) page = pages.length - 1;
+        return Column(
+          children: [
             Expanded(
-              child: TextButton(
-                onPressed: page > 0 ? () => setState(() => page--) : null,
-                child: const Text('◀  Prev', style: TextStyle(fontSize: 20)),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragEnd: (d) {
+                  final v = d.primaryVelocity ?? 0;
+                  if (v < -200 && page < pages.length - 1) {
+                    setState(() => page++);
+                  }
+                  if (v > 200 && page > 0) setState(() => page--);
+                },
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Text(pages[page], style: widget.style),
+                ),
               ),
             ),
-            Text('${page + 1} / ${pages.length}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            Expanded(
-              child: TextButton(
-                onPressed: page < pages.length - 1 ? () => setState(() => page++) : null,
-                child: const Text('Next  ▶', style: TextStyle(fontSize: 20)),
+            SizedBox(
+              height: 56,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: page > 0 ? () => setState(() => page--) : null,
+                      child: const Text(
+                        '◀  Prev',
+                        style: TextStyle(fontSize: 20),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${page + 1} / ${pages.length}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Expanded(
+                    child: TextButton(
+                      onPressed: page < pages.length - 1
+                          ? () => setState(() => page++)
+                          : null,
+                      child: const Text(
+                        'Next  ▶',
+                        style: TextStyle(fontSize: 20),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ]),
-        ),
-      ]);
-    });
+          ],
+        );
+      },
+    );
   }
 }

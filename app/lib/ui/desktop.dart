@@ -4,78 +4,22 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/feed.dart';
+import '../core/downloads.dart';
 import '../core/library.dart';
 import '../core/models.dart';
 import '../core/player.dart';
 import 'common.dart';
 import 'context_menus.dart';
+import 'desktop_menubar.dart';
+import 'desktop_table.dart';
+import 'desktop_toolbar.dart';
+import 'detail_pane.dart';
+import 'episode_filter.dart';
+import 'interface_menu.dart';
+import 'downloads_ui.dart';
+import 'pal.dart';
 import 'podcast_settings.dart';
 import 'settings.dart';
-
-/// iTunes 12 colours, in a light and a dark variant so text always sits on a
-/// background it can be read against.
-class Pal {
-  const Pal({
-    required this.bg,
-    required this.toolbarTop,
-    required this.toolbarBottom,
-    required this.sidebar,
-    required this.selected,
-    required this.stripe,
-    required this.rule,
-    required this.text,
-    required this.muted,
-    required this.lcd,
-    required this.field,
-    required this.header,
-  });
-
-  final Color bg,
-      toolbarTop,
-      toolbarBottom,
-      sidebar,
-      selected,
-      stripe,
-      rule,
-      text,
-      muted,
-      lcd,
-      field,
-      header;
-
-  static const light = Pal(
-    bg: Colors.white,
-    toolbarTop: Color(0xFFF3F3F3),
-    toolbarBottom: Color(0xFFD9D9D9),
-    sidebar: Color(0xFFE6EBF1),
-    selected: Color(0xFF3D80DF),
-    stripe: Color(0xFFF3F6FA),
-    rule: Color(0xFFBDBDBD),
-    text: Color(0xDD000000),
-    muted: Color(0xFF666666),
-    lcd: Color(0xFFEFEFEF),
-    field: Colors.white,
-    header: Color(0xFFF7F7F7),
-  );
-
-  static const dark = Pal(
-    bg: Color(0xFF1C1C1E),
-    toolbarTop: Color(0xFF3A3A3C),
-    toolbarBottom: Color(0xFF2C2C2E),
-    sidebar: Color(0xFF232426),
-    selected: Color(0xFF3D80DF),
-    stripe: Color(0xFF242426),
-    rule: Color(0xFF48484A),
-    text: Color(0xDEFFFFFF),
-    muted: Color(0xFFA0A0A5),
-    lcd: Color(0xFF1F1F21),
-    field: Color(0xFF2C2C2E),
-    header: Color(0xFF2A2A2C),
-  );
-
-  static Pal of(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark ? dark : light;
-}
 
 /// A place in the sidebar or a podcast page. Equal places compare equal, so the
 /// back/forward history can tell when you are already there.
@@ -114,8 +58,8 @@ class _Show extends _Source {
   String get key => 'show:$feedUrl';
 }
 
-/// Desktop UI modelled on iTunes 12: transport + "LCD" toolbar on top, a
-/// source-list sidebar, and a striped table of episodes.
+/// Desktop UI modelled on iTunes 12: a menu bar, a transport + "LCD" toolbar, a
+/// source-list sidebar, a striped table of episodes and an optional details pane.
 class DesktopShell extends StatefulWidget {
   const DesktopShell({super.key});
 
@@ -130,10 +74,20 @@ class _DesktopShellState extends State<DesktopShell> {
   String filter = '';
   String storeQuery = '';
   List<SearchResult> storeResults = [];
+  final FocusNode _searchFocus = FocusNode();
+  Episode?
+  _detailEpisode; // the one episode selected in the table, for the details pane
+  EpisodeFilter _episodeFilter = EpisodeFilter.all;
 
   _Source get source => _history[_pos];
   bool get canGoBack => _pos > 0;
   bool get canGoForward => _pos < _history.length - 1;
+
+  @override
+  void dispose() {
+    _searchFocus.dispose();
+    super.dispose();
+  }
 
   void _go(_Source s) {
     if (s == source) return;
@@ -142,23 +96,83 @@ class _DesktopShellState extends State<DesktopShell> {
       _history.add(s);
       _pos++;
       filter = '';
+      _detailEpisode = null;
+      _episodeFilter = EpisodeFilter.all;
     });
   }
 
   void _back() {
-    if (canGoBack) setState(() => _pos--);
+    if (canGoBack) {
+      setState(() {
+        _pos--;
+        _detailEpisode = null;
+      });
+    }
   }
 
   void _forward() {
-    if (canGoForward) setState(() => _pos++);
+    if (canGoForward) {
+      setState(() {
+        _pos++;
+        _detailEpisode = null;
+      });
+    }
   }
+
+  void _goTo(String where) => _go(switch (where) {
+    'store' => const _Store(),
+    'settings' => const _Settings(),
+    _ => _Library(where),
+  });
+
+  late final DesktopCommands _commands = DesktopCommands(
+    go: _goTo,
+    focusSearch: () => _searchFocus.requestFocus(),
+    goPodcast: (f) => _go(_Show(f)),
+    openUpNext: () =>
+        showUpNextPopover(context, onGoToPodcast: (f) => _go(_Show(f))),
+  );
+
+  /// Space plays and pauses, unless you are typing in a text box.
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent || e.logicalKey != LogicalKeyboardKey.space) {
+      return KeyEventResult.ignored;
+    }
+    final focus = FocusManager.instance.primaryFocus;
+    if (focus?.context?.findAncestorWidgetOfExactType<EditableText>() != null) {
+      return KeyEventResult.ignored;
+    }
+    final player = context.read<PlayerController>();
+    if (player.current == null) return KeyEventResult.ignored;
+    player.toggle();
+    return KeyEventResult.handled;
+  }
+
+  String _settingsCategory = 'Appearance';
+
+  /// Opens Settings on the Interface page (right-click the toolbar or sidebar, then Customize).
+  void _customize() {
+    setState(() => _settingsCategory = 'Interface');
+    _go(const _Settings());
+  }
+
+  bool get _isTable =>
+      source is _Show ||
+      (source is _Library &&
+          !const {
+            'podcasts',
+            'downloads',
+            'stats',
+          }.contains((source as _Library).kind));
 
   @override
   Widget build(BuildContext context) {
     final lib = context.watch<Library>();
     final pal = Pal.of(context);
+    final s = lib.settings;
     return CallbackShortcuts(
       bindings: {
+        ...desktopShortcuts(context, _commands),
         const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): _back,
         const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true):
             _forward,
@@ -166,9 +180,12 @@ class _DesktopShellState extends State<DesktopShell> {
             _back,
         const SingleActivator(LogicalKeyboardKey.bracketRight, control: true):
             _forward,
+        const SingleActivator(LogicalKeyboardKey.keyI, control: true): () =>
+            lib.setSetting('showDetails', !s.showDetails),
       },
       child: Focus(
         autofocus: true,
+        onKeyEvent: _onKey,
         // The back and forward buttons on a mouse.
         child: Listener(
           onPointerDown: (e) {
@@ -179,22 +196,52 @@ class _DesktopShellState extends State<DesktopShell> {
             backgroundColor: pal.bg,
             body: Column(
               children: [
-                _Toolbar(
-                  onSearch: (s) => setState(() => filter = s),
-                  onSettings: () => _go(const _Settings()),
+                if (s.uiMenuBar) AppMenuBar(commands: _commands),
+                DesktopToolbar(
+                  onSearch: (v) => setState(() => filter = v),
+                  searchFocus: _searchFocus,
                   onBack: canGoBack ? _back : null,
                   onForward: canGoForward ? _forward : null,
+                  onGoToPodcast: (f) => _go(_Show(f)),
+                  onCustomize: _customize,
                 ),
                 Expanded(
                   child: Row(
                     children: [
-                      _Sidebar(source: source, onSelect: _go),
-                      Container(width: 1, color: pal.rule),
+                      if (s.showSidebar) ...[
+                        _Sidebar(
+                          source: source,
+                          onSelect: _go,
+                          onCustomize: _customize,
+                        ),
+                        // Drag the edge to resize the sidebar.
+                        MouseRegion(
+                          cursor: SystemMouseCursors.resizeColumn,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onHorizontalDragUpdate: (d) => lib.setSetting(
+                              'sidebarWidth',
+                              (s.sidebarWidth + d.delta.dx).clamp(140.0, 360.0),
+                            ),
+                            child: SizedBox(
+                              width: 5,
+                              child: Center(
+                                child: Container(width: 1, color: pal.rule),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       Expanded(child: _content(lib)),
+                      if (s.showDetails && _isTable)
+                        EpisodeDetailPane(
+                          episode: _detailEpisode,
+                          onGoToPodcast: (f) => _go(_Show(f)),
+                        ),
                     ],
                   ),
                 ),
-                _StatusBar(text: _status(lib)),
+                if (s.showStatusBar) _StatusBar(text: _status(lib)),
               ],
             ),
           ),
@@ -216,6 +263,12 @@ class _DesktopShellState extends State<DesktopShell> {
       eps = lib.historyEpisodes;
     } else if (s is _Show) {
       eps = lib.episodesOf(s.feedUrl);
+    } else if (s is _Library && s.kind == 'downloads') {
+      final dm = context.read<DownloadManager>();
+      return '${dm.doneCount} downloaded, ${fmtBytes(dm.totalBytes)}';
+    } else if (s is _Library && s.kind == 'stats') {
+      final st = lib.stats();
+      return '${fmtLong(st.listened, zero: '0 m')} listened across ${st.played} episodes';
     } else {
       return lib.syncing
           ? 'Syncing…'
@@ -224,12 +277,16 @@ class _DesktopShellState extends State<DesktopShell> {
     final total = Duration(
       milliseconds: eps.fold(0, (a, e) => a + e.durationMs),
     );
+    if (s is _Library && s.kind == 'queue') {
+      return '${eps.length} episodes, ${fmtLong(lib.queueTotalLength, zero: '0 m')} total, ${fmtLong(lib.queueRemaining, zero: 'nothing')} left';
+    }
     final hours = total.inMinutes / 60;
     return '${eps.length} episodes, ${hours.toStringAsFixed(1)} hours';
   }
 
   Widget _content(Library lib) {
     final s = source;
+    final dm = context.watch<DownloadManager>();
     bool match(Episode e) =>
         filter.isEmpty ||
         e.title.toLowerCase().contains(filter.toLowerCase()) ||
@@ -237,33 +294,73 @@ class _DesktopShellState extends State<DesktopShell> {
             .podcastTitle(e.feedUrl)
             .toLowerCase()
             .contains(filter.toLowerCase());
+    void goPodcast(String f) => _go(_Show(f));
+    void focus(Episode? e) => setState(() => _detailEpisode = e);
     switch (s) {
       case _Library(kind: 'podcasts'):
-        return _PodcastGrid(onOpen: (f) => _go(_Show(f)), filter: filter);
+        return _PodcastGrid(onOpen: goPodcast, filter: filter);
       case _Library(kind: 'queue'):
-        return EpisodeTable(
-          episodes: lib.queueEpisodes.where(match).toList(),
-          queueMode: true,
-          onGoToPodcast: (f) => _go(_Show(f)),
+        return Column(
+          children: [
+            const QueueHeader(),
+            Expanded(
+              child: EpisodeTable(
+                key: const ValueKey('queue'),
+                episodes: lib.queueEpisodes.where(match).toList(),
+                queueMode: true,
+                canReorder: filter.isEmpty,
+                onGoToPodcast: goPodcast,
+                onFocusEpisode: focus,
+              ),
+            ),
+          ],
         );
       case _Library(kind: 'favorites'):
         return EpisodeTable(
+          key: const ValueKey('favorites'),
           episodes: lib.favoriteEpisodes.where(match).toList(),
           emptyText: 'No favorites yet. Right-click an episode to add one.',
-          onGoToPodcast: (f) => _go(_Show(f)),
+          onGoToPodcast: goPodcast,
+          onFocusEpisode: focus,
         );
       case _Library(kind: 'history'):
         return EpisodeTable(
+          key: const ValueKey('history'),
           episodes: lib.historyEpisodes.where(match).toList(),
           keepOrder: true,
           historyView: true,
           emptyText: 'Nothing played yet',
-          onGoToPodcast: (f) => _go(_Show(f)),
+          onGoToPodcast: goPodcast,
+          onFocusEpisode: focus,
         );
+      case _Library(kind: 'downloads'):
+        return const DownloadsView();
+      case _Library(kind: 'stats'):
+        return const StatsView();
       case _Library():
-        return EpisodeTable(
-          episodes: lib.allEpisodes.where(match).toList(),
-          onGoToPodcast: (f) => _go(_Show(f)),
+        final all = lib.allEpisodes.where(match).toList();
+        return Column(
+          children: [
+            if (lib.settings.uiFilterBar)
+              EpisodeFilterBar(
+                value: _episodeFilter,
+                onChanged: (f) => setState(() => _episodeFilter = f),
+                episodes: all,
+                lib: lib,
+                dm: dm,
+              ),
+            Expanded(
+              child: EpisodeTable(
+                key: const ValueKey('episodes'),
+                episodes: filterEpisodes(_episodeFilter, all, lib, dm),
+                emptyText: _episodeFilter == EpisodeFilter.all
+                    ? null
+                    : 'No ${episodeFilterLabels[_episodeFilter]!.toLowerCase()} episodes',
+                onGoToPodcast: goPodcast,
+                onFocusEpisode: focus,
+              ),
+            ),
+          ],
         );
       case _Show(:final feedUrl):
         final eps = lib
@@ -276,8 +373,22 @@ class _DesktopShellState extends State<DesktopShell> {
         return Column(
           children: [
             _ShowHeader(feedUrl),
+            if (lib.settings.uiFilterBar)
+              EpisodeFilterBar(
+                value: _episodeFilter,
+                onChanged: (f) => setState(() => _episodeFilter = f),
+                episodes: eps,
+                lib: lib,
+                dm: dm,
+              ),
             Expanded(
-              child: EpisodeTable(episodes: eps, showPodcastColumn: false),
+              child: EpisodeTable(
+                key: ValueKey('show:$feedUrl'),
+                episodes: filterEpisodes(_episodeFilter, eps, lib, dm),
+                showPodcastColumn: false,
+                onGoToPodcast: goPodcast,
+                onFocusEpisode: focus,
+              ),
             ),
           ],
         );
@@ -289,127 +400,159 @@ class _DesktopShellState extends State<DesktopShell> {
             storeQuery = q;
             storeResults = r;
           },
-          onOpen: (f) => _go(_Show(f)),
+          onOpen: goPodcast,
         );
       case _Settings():
-        return const SettingsPane();
+        return SettingsPane(
+          key: ValueKey(_settingsCategory),
+          initial: _settingsCategory,
+        );
     }
   }
 }
 
-// ---- toolbar ---------------------------------------------------------------
+/// The strip above Up Next: totals, when the queue would finish, and the sort, shuffle, clean-up and undo buttons.
+class QueueHeader extends StatelessWidget {
+  const QueueHeader({super.key});
 
-class _Toolbar extends StatelessWidget {
-  const _Toolbar({
-    required this.onSearch,
-    required this.onSettings,
-    required this.onBack,
-    required this.onForward,
-  });
-  final ValueChanged<String> onSearch;
-  final VoidCallback onSettings;
-  final VoidCallback? onBack; // null when there is nowhere to go back to
-  final VoidCallback? onForward;
+  static String _clock(DateTime t) {
+    final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    return '$h:${t.minute.toString().padLeft(2, '0')} ${t.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  static const _labels = {
+    QueueSort.oldestFirst: 'Release date, oldest first',
+    QueueSort.newestFirst: 'Release date, newest first',
+    QueueSort.title: 'Title',
+    QueueSort.podcast: 'Podcast',
+    QueueSort.shortest: 'Time left, shortest first',
+    QueueSort.longest: 'Time left, longest first',
+  };
 
   @override
   Widget build(BuildContext context) {
-    final player = context.watch<PlayerController>();
-    final lib = context.read<Library>();
+    final lib = context.watch<Library>();
+    final pin = context.read<PlayerController>().current?.id;
     final pal = Pal.of(context);
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(15),
-      borderSide: BorderSide(color: pal.rule),
-    );
+    final n = lib.queue.length;
+    final left = lib.queueRemaining;
+    final ends = DateTime.now().add(left);
+
+    Future<void> clear() async {
+      if (lib.settings.confirmClearQueue) {
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: const Text('Clear Up Next?'),
+            content: Text('This removes all $n episodes from Up Next.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: const Text('Clear'),
+              ),
+            ],
+          ),
+        );
+        if (ok != true) return;
+      }
+      lib.clearQueue();
+      if (context.mounted) showQueueUndo(context, lib, 'Up Next cleared');
+    }
+
     return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [pal.toolbarTop, pal.toolbarBottom],
-        ),
+        color: pal.header,
         border: Border(bottom: BorderSide(color: pal.rule)),
       ),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new),
-            iconSize: 18,
-            tooltip: 'Go back',
-            onPressed: onBack,
-          ),
-          IconButton(
-            icon: const Icon(Icons.arrow_forward_ios),
-            iconSize: 18,
-            tooltip: 'Go forward',
-            onPressed: onForward,
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.fast_rewind),
-            tooltip: 'Back ${lib.skipBackSec}s',
-            onPressed: player.skipBack,
-          ),
-          IconButton(
-            iconSize: 34,
-            icon: Icon(player.playing ? Icons.pause : Icons.play_arrow),
-            onPressed: player.current == null ? null : player.toggle,
-          ),
-          IconButton(
-            icon: const Icon(Icons.fast_forward),
-            tooltip: 'Forward ${lib.skipForwardSec}s',
-            onPressed: player.skipForward,
-          ),
-          IconButton(
-            icon: const Icon(Icons.skip_next),
-            tooltip: 'Next in Up Next',
-            onPressed: player.next,
-          ),
-          const SizedBox(width: 16),
           Expanded(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 520),
-                child: _Lcd(player: player),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Up Next',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: pal.text,
+                  ),
+                ),
+                Text(
+                  n == 0
+                      ? 'Nothing queued'
+                      : '$n episodes  ·  ${fmtLong(lib.queueTotalLength, zero: '0 m')} total  ·  ${fmtLong(left, zero: 'nothing')} left  ·  ends about ${_clock(ends)}',
+                  style: TextStyle(fontSize: 12, color: pal.muted),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 16),
-          TextButton(
-            onPressed: () {
-              const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
-              final feed = player.current?.feedUrl ?? '';
-              final i = speeds.indexWhere(
-                (s) => (s - lib.speedFor(feed)).abs() < 0.01,
-              );
-              player.setSpeed(speeds[(i + 1) % speeds.length]);
+          PopupMenuButton<QueueSort>(
+            tooltip: 'Sort Up Next',
+            enabled: n > 1,
+            onSelected: (m) {
+              lib.sortQueue(m, pinId: pin);
+              showQueueUndo(context, lib, 'Up Next sorted');
             },
-            child: Text('${lib.speedFor(player.current?.feedUrl ?? '')}×'),
-          ),
-          SizedBox(
-            width: 180,
-            height: 30,
-            child: TextField(
-              onChanged: onSearch,
-              style: TextStyle(fontSize: 13, color: pal.text),
-              decoration: InputDecoration(
-                isDense: true,
-                filled: true,
-                fillColor: pal.field,
-                hintText: 'Search Library',
-                hintStyle: TextStyle(color: pal.muted),
-                prefixIcon: Icon(Icons.search, size: 16, color: pal.muted),
-                contentPadding: const EdgeInsets.symmetric(vertical: 6),
-                border: border,
-                enabledBorder: border,
+            itemBuilder: (c) => [
+              for (final e in _labels.entries)
+                PopupMenuItem(value: e.key, child: Text(e.value)),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.sort,
+                    size: 18,
+                    color: n > 1 ? null : Theme.of(context).disabledColor,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Sort',
+                    style: TextStyle(
+                      color: n > 1 ? null : Theme.of(context).disabledColor,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
-            onPressed: onSettings,
+          TextButton.icon(
+            onPressed: n > 1
+                ? () {
+                    lib.shuffleQueue(pinId: pin);
+                    showQueueUndo(context, lib, 'Up Next shuffled');
+                  }
+                : null,
+            icon: const Icon(Icons.shuffle, size: 18),
+            label: const Text('Shuffle'),
+          ),
+          TextButton(
+            onPressed: lib.queue.any((id) => lib.progressOf(id).played)
+                ? () {
+                    final removed = lib.removePlayedFromQueue();
+                    showQueueUndo(context, lib, 'Removed $removed played');
+                  }
+                : null,
+            child: const Text('Remove Played'),
+          ),
+          TextButton(
+            onPressed: n > 0 ? clear : null,
+            child: const Text('Clear'),
+          ),
+          TextButton.icon(
+            onPressed: lib.canUndoQueue ? () => lib.undoQueue() : null,
+            icon: const Icon(Icons.undo, size: 18),
+            label: Text(
+              lib.canUndoQueue ? 'Undo ${lib.queueUndoLabel}' : 'Undo',
+            ),
           ),
         ],
       ),
@@ -417,107 +560,17 @@ class _Toolbar extends StatelessWidget {
   }
 }
 
-class _Lcd extends StatelessWidget {
-  const _Lcd({required this.player});
-  final PlayerController player;
-
-  @override
-  Widget build(BuildContext context) {
-    final lib = context.read<Library>();
-    final pal = Pal.of(context);
-    final e = player.current;
-    final total = player.duration.inMilliseconds.toDouble();
-    return Container(
-      height: 48,
-      decoration: BoxDecoration(
-        color: pal.lcd,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: pal.rule),
-      ),
-      child: e == null
-          ? Center(
-              child: Text(
-                'PodSync',
-                style: TextStyle(fontSize: 18, color: pal.muted),
-              ),
-            )
-          : Row(
-              children: [
-                Art(e.imageUrl, size: 46, radius: 0),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          e.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: pal.text,
-                          ),
-                        ),
-                        Text(
-                          lib.podcastTitle(e.feedUrl),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 11, color: pal.muted),
-                        ),
-                        Row(
-                          children: [
-                            Text(
-                              fmtDuration(player.position),
-                              style: TextStyle(fontSize: 10, color: pal.text),
-                            ),
-                            Expanded(
-                              child: SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  trackHeight: 3,
-                                  thumbShape: const RoundSliderThumbShape(
-                                    enabledThumbRadius: 4,
-                                  ),
-                                  overlayShape: SliderComponentShape.noOverlay,
-                                ),
-                                child: Slider(
-                                  value: player.position.inMilliseconds
-                                      .toDouble()
-                                      .clamp(0, total > 0 ? total : 1),
-                                  max: total > 0 ? total : 1,
-                                  onChanged: total > 0
-                                      ? (v) => player.seek(
-                                          Duration(milliseconds: v.round()),
-                                        )
-                                      : null,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              total > 0
-                                  ? '-${fmtDuration(player.duration - player.position)}'
-                                  : '',
-                              style: TextStyle(fontSize: 10, color: pal.text),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
-}
-
 // ---- sidebar ---------------------------------------------------------------
 
 class _Sidebar extends StatelessWidget {
-  const _Sidebar({required this.source, required this.onSelect});
+  const _Sidebar({
+    required this.source,
+    required this.onSelect,
+    required this.onCustomize,
+  });
   final _Source source;
   final ValueChanged<_Source> onSelect;
+  final VoidCallback onCustomize;
 
   bool _is(_Source s) => switch ((source, s)) {
     (_Library a, _Library b) => a.kind == b.kind,
@@ -529,6 +582,17 @@ class _Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lib = context.watch<Library>();
+    final dm = context.watch<DownloadManager>();
+    final ui = lib.settings;
+    final counts = ui.uiSidebarCounts;
+    final anyLibrary =
+        ui.uiNavPodcasts ||
+        ui.uiNavEpisodes ||
+        ui.uiNavUpNext ||
+        ui.uiNavFavorites ||
+        ui.uiNavHistory ||
+        ui.uiNavDownloads ||
+        ui.uiNavStats;
     final pal = Pal.of(context);
     Widget header(String t) => Padding(
       padding: const EdgeInsets.fromLTRB(12, 14, 8, 4),
@@ -541,7 +605,13 @@ class _Sidebar extends StatelessWidget {
         ),
       ),
     );
-    Widget item(IconData icon, String label, _Source s, {bool? selected}) {
+    Widget item(
+      IconData icon,
+      String label,
+      _Source s, {
+      bool? selected,
+      int? count,
+    }) {
       final sel = selected ?? _is(s);
       final row = InkWell(
         onTap: () => onSelect(s),
@@ -564,6 +634,14 @@ class _Sidebar extends StatelessWidget {
                   ),
                 ),
               ),
+              if (count != null && count > 0)
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: sel ? Colors.white70 : pal.muted,
+                  ),
+                ),
             ],
           ),
         ),
@@ -583,33 +661,139 @@ class _Sidebar extends StatelessWidget {
     return Container(
       width: lib.settings.sidebarWidth,
       color: pal.sidebar,
-      child: ListView(
+      child: Column(
         children: [
-          header('LIBRARY'),
-          item(Icons.podcasts, 'Podcasts', const _Library('podcasts')),
-          item(Icons.library_music, 'Episodes', const _Library('episodes')),
-          item(Icons.queue_music, 'Up Next', const _Library('queue')),
-          item(Icons.star, 'Favorites', const _Library('favorites')),
-          item(Icons.history, 'Recently Played', const _Library('history')),
-          header('PODCAST STORE'),
-          item(Icons.search, 'Find Podcasts', const _Store()),
-          header('SETTINGS'),
-          item(
-            lib.syncEnabled ? Icons.cloud_done : Icons.settings,
-            'Settings and Sync',
-            const _Settings(),
-          ),
-          if (lib.subscriptions.isNotEmpty) header('SUBSCRIPTIONS'),
-          for (final p in lib.subscriptions)
-            item(
-              Icons.rss_feed,
-              p.displayTitle,
-              _Show(p.feedUrl),
-              selected:
-                  source is _Show && (source as _Show).feedUrl == p.feedUrl,
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onSecondaryTapDown: (d) =>
+                  showSidebarMenu(context, d.globalPosition, lib, onCustomize),
+              child: ListView(
+                children: [
+                  if (anyLibrary) header('LIBRARY'),
+                  if (ui.uiNavPodcasts)
+                    item(
+                      Icons.podcasts,
+                      'Podcasts',
+                      const _Library('podcasts'),
+                      count: counts ? lib.subscriptions.length : null,
+                    ),
+                  if (ui.uiNavEpisodes)
+                    item(
+                      Icons.library_music,
+                      'Episodes',
+                      const _Library('episodes'),
+                      count: counts ? lib.unplayedCount : null,
+                    ),
+                  if (ui.uiNavUpNext)
+                    item(
+                      Icons.queue_music,
+                      'Up Next',
+                      const _Library('queue'),
+                      count: counts ? lib.queue.length : null,
+                    ),
+                  if (ui.uiNavFavorites)
+                    item(
+                      Icons.star,
+                      'Favorites',
+                      const _Library('favorites'),
+                      count: counts ? lib.favoriteCount : null,
+                    ),
+                  if (ui.uiNavHistory)
+                    item(
+                      Icons.history,
+                      'Recently Played',
+                      const _Library('history'),
+                    ),
+                  if (ui.uiNavDownloads)
+                    item(
+                      dm.activeIds.isEmpty
+                          ? Icons.download_done
+                          : Icons.downloading,
+                      'Downloads',
+                      const _Library('downloads'),
+                      count: counts
+                          ? dm.doneCount +
+                                dm.activeIds.length +
+                                dm.queuedIds.length
+                          : null,
+                    ),
+                  if (ui.uiNavStats)
+                    item(
+                      Icons.bar_chart,
+                      'Statistics',
+                      const _Library('stats'),
+                    ),
+                  if (ui.uiNavStore) ...[
+                    header('PODCAST STORE'),
+                    item(Icons.search, 'Find Podcasts', const _Store()),
+                  ],
+                  // Settings is always listed, so there is always a way back to these switches.
+                  header('SETTINGS'),
+                  item(
+                    lib.syncEnabled ? Icons.cloud_done : Icons.settings,
+                    'Settings and Sync',
+                    const _Settings(),
+                  ),
+                  if (ui.uiNavSubscriptions && lib.subscriptions.isNotEmpty)
+                    header('SUBSCRIPTIONS'),
+                  if (ui.uiNavSubscriptions)
+                    for (final p in lib.subscriptions)
+                      item(
+                        Icons.rss_feed,
+                        p.displayTitle,
+                        _Show(p.feedUrl),
+                        selected:
+                            source is _Show &&
+                            (source as _Show).feedUrl == p.feedUrl,
+                      ),
+                ],
+              ),
             ),
+          ),
+          if (lib.settings.showArtworkPane)
+            _ArtworkPane(onGoToPodcast: (f) => onSelect(_Show(f))),
         ],
       ),
+    );
+  }
+}
+
+/// The square at the bottom of the iTunes sidebar showing what is playing.
+class _ArtworkPane extends StatelessWidget {
+  const _ArtworkPane({required this.onGoToPodcast});
+  final ValueChanged<String> onGoToPodcast;
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = Pal.of(context);
+    final e = context.select<PlayerController, Episode?>((p) => p.current);
+    final width = context.select<Library, double>(
+      (l) => l.settings.sidebarWidth,
+    );
+    final size = width.clamp(140.0, 260.0);
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: pal.rule)),
+      ),
+      width: double.infinity,
+      child: e == null
+          ? SizedBox(
+              height: 56,
+              child: Center(
+                child: Text(
+                  'Nothing playing',
+                  style: TextStyle(fontSize: 11, color: pal.muted),
+                ),
+              ),
+            )
+          : Tooltip(
+              message: e.title,
+              child: InkWell(
+                onTap: () => onGoToPodcast(e.feedUrl),
+                child: Art(e.imageUrl, size: size, radius: 0),
+              ),
+            ),
     );
   }
 }
@@ -634,361 +818,6 @@ class _StatusBar extends StatelessWidget {
       ),
       child: Text(text, style: TextStyle(fontSize: 11, color: pal.muted)),
     );
-  }
-}
-
-// ---- table -----------------------------------------------------------------
-
-class EpisodeTable extends StatefulWidget {
-  const EpisodeTable({
-    super.key,
-    required this.episodes,
-    this.showPodcastColumn = true,
-    this.queueMode = false,
-    this.keepOrder = false,
-    this.historyView = false,
-    this.emptyText,
-    this.onGoToPodcast,
-  });
-  final List<Episode> episodes;
-  final bool showPodcastColumn;
-  final bool queueMode;
-  final bool keepOrder; // show in the given order (history), no column sorting
-  final bool historyView;
-  final String? emptyText;
-  final ValueChanged<String>?
-  onGoToPodcast; // "Go to Podcast" in the right-click menu
-
-  @override
-  State<EpisodeTable> createState() => _EpisodeTableState();
-}
-
-class _EpisodeTableState extends State<EpisodeTable> {
-  String sortBy = 'date';
-  bool? _asc; // null until the user clicks a header; then follows the "episode order" setting
-  final Set<String> selected = {};
-  final FocusNode _focus = FocusNode();
-  String? _anchor; // where a shift-click range starts
-  List<Episode> _shown = [];
-
-  @override
-  Widget build(BuildContext context) {
-    final lib = context.watch<Library>();
-    final pal = Pal.of(context);
-    final s = lib.settings;
-    final player = context.read<PlayerController>();
-    final currentId = context.select<PlayerController, String?>(
-      (p) => p.current?.id,
-    );
-    final asc = _asc ?? (sortBy == 'date' ? s.sortOldestFirst : true);
-    final fixedOrder = widget.queueMode || widget.keepOrder;
-    // Selection only holds episodes that are still listed.
-    selected.removeWhere((id) => !widget.episodes.any((e) => e.id == id));
-
-    var eps = [...widget.episodes];
-    if (!fixedOrder) {
-      int cmp(Episode a, Episode b) => switch (sortBy) {
-        'name' => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-        'time' => a.durationMs.compareTo(b.durationMs),
-        'podcast' =>
-          lib.podcastTitle(a.feedUrl).compareTo(lib.podcastTitle(b.feedUrl)),
-        _ => a.published.compareTo(b.published),
-      };
-      eps.sort((a, b) => asc ? cmp(a, b) : cmp(b, a));
-    }
-
-    Widget head(String label, String key, {double? width, int flex = 0}) {
-      final active = sortBy == key && !fixedOrder;
-      final child = InkWell(
-        onTap: fixedOrder
-            ? null
-            : () => setState(() {
-                if (sortBy == key) {
-                  _asc = !asc;
-                } else {
-                  sortBy = key;
-                  _asc = key != 'date';
-                }
-              }),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: Row(
-            children: [
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: pal.text,
-                    fontWeight: active ? FontWeight.bold : FontWeight.w500,
-                  ),
-                ),
-              ),
-              if (active)
-                Icon(
-                  asc ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                  size: 16,
-                  color: pal.text,
-                ),
-            ],
-          ),
-        ),
-      );
-      return width != null
-          ? SizedBox(width: width, child: child)
-          : Expanded(flex: flex, child: child);
-    }
-
-    _shown = eps;
-    final showPodcast = widget.showPodcastColumn && s.colPodcast;
-    final rowHeight = s.tableRowHeight.toDouble();
-
-    void playSelected() {
-      final chosen = [
-        for (final x in _shown)
-          if (selected.contains(x.id)) x,
-      ];
-      if (chosen.isEmpty) return;
-      if (chosen.length > 1) {
-        lib.enqueueAll([for (final x in chosen.skip(1)) x.id], next: true);
-      }
-      player.play(chosen.first);
-    }
-
-    return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyA, control: true): () =>
-            setState(() => selected.addAll(_shown.map((x) => x.id))),
-        const SingleActivator(LogicalKeyboardKey.keyA, meta: true): () =>
-            setState(() => selected.addAll(_shown.map((x) => x.id))),
-        const SingleActivator(LogicalKeyboardKey.enter): playSelected,
-        // In Up Next, Delete takes the selected episodes off the queue.
-        if (widget.queueMode)
-          const SingleActivator(LogicalKeyboardKey.delete): () =>
-              lib.removeAllFromQueue(selected.toList()),
-      },
-      child: Focus(
-        focusNode: _focus,
-        child: Column(
-          children: [
-            Container(
-              height: 22,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [pal.toolbarTop, pal.toolbarBottom],
-                ),
-                border: Border(bottom: BorderSide(color: pal.rule)),
-              ),
-              child: Row(
-                children: [
-                  const SizedBox(width: 28),
-                  head('Name', 'name', flex: 4),
-                  if (s.colTime) head('Time', 'time', width: 70),
-                  if (showPodcast) head('Podcast', 'podcast', flex: 2),
-                  if (s.colDate) head('Release Date', 'date', width: 120),
-                  const SizedBox(width: 36),
-                ],
-              ),
-            ),
-            Expanded(
-              child: eps.isEmpty
-                  ? Center(
-                      child: Text(
-                        widget.emptyText ??
-                            (widget.queueMode
-                                ? 'Up Next is empty. Right-click an episode to add it.'
-                                : 'No episodes'),
-                        style: TextStyle(color: pal.muted),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemExtent: rowHeight,
-                      itemCount: eps.length,
-                      itemBuilder: (c, i) {
-                        final e = eps[i];
-                        final pr = lib.progressOf(e.id);
-                        final sel = selected.contains(e.id);
-                        final fg = sel
-                            ? Colors.white
-                            : (pr.played ? pal.muted : pal.text);
-                        final st = TextStyle(
-                          fontSize: 12,
-                          color: fg,
-                          fontWeight: currentId == e.id
-                              ? FontWeight.bold
-                              : null,
-                        );
-                        const pad = EdgeInsets.symmetric(horizontal: 6);
-                        return GestureDetector(
-                          onSecondaryTapDown: (d) {
-                            // Right-clicking something outside the selection selects just that row first.
-                            if (!selected.contains(e.id)) {
-                              setState(() => _select(e, i));
-                            }
-                            showEpisodeMenu(
-                              c,
-                              d.globalPosition,
-                              [
-                                for (final x in _shown)
-                                  if (selected.contains(x.id)) x,
-                              ],
-                              queueView: widget.queueMode,
-                              historyView: widget.historyView,
-                              onGoToPodcast: widget.onGoToPodcast,
-                            );
-                          },
-                          // Select the instant the button goes down. A tap handler would wait out the
-                          // double-click window first, which makes every click feel laggy.
-                          child: Listener(
-                            behavior: HitTestBehavior.opaque,
-                            onPointerDown: (ev) {
-                              if (ev.buttons != kPrimaryButton) return;
-                              _focus.requestFocus();
-                              setState(() => _select(e, i));
-                            },
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onDoubleTap: () => player.play(e),
-                              child: Container(
-                                color: sel
-                                    ? pal.selected
-                                    : (i.isOdd ? pal.stripe : pal.bg),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 28,
-                                      child: Center(
-                                        child: currentId == e.id
-                                            ? Icon(
-                                                Icons.volume_up,
-                                                size: 14,
-                                                color: fg,
-                                              )
-                                            : (!pr.played && pr.positionMs == 0
-                                                  ? Container(
-                                                      width: 8,
-                                                      height: 8,
-                                                      decoration: BoxDecoration(
-                                                        color: sel
-                                                            ? Colors.white
-                                                            : pal.selected,
-                                                        shape: BoxShape.circle,
-                                                      ),
-                                                    )
-                                                  : null),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 4,
-                                      child: Padding(
-                                        padding: pad,
-                                        child: Text(
-                                          e.title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: st,
-                                        ),
-                                      ),
-                                    ),
-                                    if (s.colTime)
-                                      SizedBox(
-                                        width: 70,
-                                        child: Padding(
-                                          padding: pad,
-                                          child: Text(
-                                            fmtDurationMs(e.durationMs),
-                                            style: st,
-                                          ),
-                                        ),
-                                      ),
-                                    if (showPodcast)
-                                      Expanded(
-                                        flex: 2,
-                                        child: Padding(
-                                          padding: pad,
-                                          child: Text(
-                                            lib.podcastTitle(e.feedUrl),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: st,
-                                          ),
-                                        ),
-                                      ),
-                                    if (s.colDate)
-                                      SizedBox(
-                                        width: 120,
-                                        child: Padding(
-                                          padding: pad,
-                                          child: Text(
-                                            fmtDate(e.published),
-                                            style: st,
-                                          ),
-                                        ),
-                                      ),
-                                    SizedBox(
-                                      width: 36,
-                                      child: IconButton(
-                                        padding: EdgeInsets.zero,
-                                        iconSize: 16,
-                                        color: fg,
-                                        tooltip: 'Play',
-                                        icon: const Icon(
-                                          Icons.play_circle_outline,
-                                        ),
-                                        onPressed: () => player.play(e),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _focus.dispose();
-    super.dispose();
-  }
-
-  /// Click selects one row, Ctrl/Cmd-click toggles it, Shift-click selects a range.
-  void _select(Episode e, int index) {
-    final kb = HardwareKeyboard.instance;
-    if (kb.isShiftPressed && _anchor != null) {
-      final from = _shown.indexWhere((x) => x.id == _anchor);
-      if (from >= 0) {
-        selected
-          ..clear()
-          ..addAll(
-            _shown
-                .sublist(
-                  from < index ? from : index,
-                  (from < index ? index : from) + 1,
-                )
-                .map((x) => x.id),
-          );
-        return;
-      }
-    }
-    if (kb.isControlPressed || kb.isMetaPressed) {
-      selected.contains(e.id) ? selected.remove(e.id) : selected.add(e.id);
-    } else {
-      selected
-        ..clear()
-        ..add(e.id);
-    }
-    _anchor = e.id;
   }
 }
 

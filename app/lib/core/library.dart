@@ -13,6 +13,30 @@ import 'gpodder.dart';
 import 'models.dart';
 import 'settings.dart';
 
+/// Ways to re-order the whole queue in one go.
+enum QueueSort { oldestFirst, newestFirst, title, podcast, shortest, longest }
+
+/// Listening totals for one podcast.
+class PodcastStats {
+  PodcastStats(this.feedUrl, this.title);
+  final String feedUrl;
+  final String title;
+  int episodes = 0;
+  int played = 0;
+  Duration listened =
+      Duration.zero; // estimated from progress: finished episodes count in full
+  Duration length = Duration.zero; // length of all its episodes
+}
+
+class LibraryStats {
+  int episodes = 0;
+  int played = 0;
+  int inProgress = 0;
+  Duration listened = Duration.zero;
+  Duration length = Duration.zero;
+  List<PodcastStats> perPodcast = [];
+}
+
 /// All app data: subscriptions, episodes, progress, queue, favorites and
 /// settings, plus the bookkeeping for both sync backends (the PodSync server
 /// and gPodder). Every mutation of synced data goes through [_touch].
@@ -25,6 +49,7 @@ class Library extends ChangeNotifier {
   final Map<String, Episode> episodes = {};
   final Map<String, Progress> progress = {};
   final Map<String, Flag> favorites = {};
+  final Map<String, Rate> ratings = {};
   List<String> queue = [];
   int queueUpdatedAt = 0;
 
@@ -55,7 +80,8 @@ class Library extends ChangeNotifier {
   int _gSubsSince = 0;
   int _gActionsSince = 0;
   final Map<String, int> _gDirty = {}; // only "sub|..." and "progress|..."
-  List<Map<String, dynamic>> _gPending = []; // actions whose episode we don't have yet
+  List<Map<String, dynamic>> _gPending =
+      []; // actions whose episode we don't have yet
 
   bool syncing = false;
   String? syncError;
@@ -64,15 +90,25 @@ class Library extends ChangeNotifier {
   File? _file;
   Timer? _saveTimer;
   Timer? _refreshTimer;
+
+  /// Called when a refresh finds episodes that were not in the feed before (the download manager listens).
+  void Function(Podcast podcast, List<Episode> arrivals)? onNewEpisodes;
   Timer? _syncTimer;
 
   // ---- persistence -------------------------------------------------------
 
   Future<void> load({File? file}) async {
-    _file = file ?? File(p.join((await getApplicationSupportDirectory()).path, 'library.json'));
+    _file =
+        file ??
+        File(
+          p.join((await getApplicationSupportDirectory()).path, 'library.json'),
+        );
     if (!await _file!.exists()) return;
     try {
-      _applyMap(jsonDecode(await _file!.readAsString()) as Map<String, dynamic>, includeAccounts: true);
+      _applyMap(
+        jsonDecode(await _file!.readAsString()) as Map<String, dynamic>,
+        includeAccounts: true,
+      );
     } catch (e) {
       debugPrint('Could not read library.json: $e');
     }
@@ -90,8 +126,15 @@ class Library extends ChangeNotifier {
       final e = Episode.fromJson(x);
       episodes[e.id] = e;
     }
-    (j['progress'] as Map? ?? {}).forEach((k, v) => progress[k] = Progress.fromJson(v));
-    (j['favorites'] as Map? ?? {}).forEach((k, v) => favorites[k] = Flag(v['on'], v['at']));
+    (j['progress'] as Map? ?? {}).forEach(
+      (k, v) => progress[k] = Progress.fromJson(v),
+    );
+    (j['favorites'] as Map? ?? {}).forEach(
+      (k, v) => favorites[k] = Flag(v['on'], v['at']),
+    );
+    (j['ratings'] as Map? ?? {}).forEach(
+      (k, v) => ratings[k] = Rate(v['stars'], v['at']),
+    );
     queue = List<String>.from(j['queue'] ?? []);
     queueUpdatedAt = j['queueUpdatedAt'] ?? 0;
     speed = (j['speed'] ?? 1.0).toDouble();
@@ -115,7 +158,9 @@ class Library extends ChangeNotifier {
     _gSubsSince = j['gSubsSince'] ?? 0;
     _gActionsSince = j['gActionsSince'] ?? 0;
     (j['gDirty'] as Map? ?? {}).forEach((k, v) => _gDirty[k] = v);
-    _gPending = List<Map<String, dynamic>>.from((j['gPending'] as List? ?? []).map((x) => Map<String, dynamic>.from(x)));
+    _gPending = List<Map<String, dynamic>>.from(
+      (j['gPending'] as List? ?? []).map((x) => Map<String, dynamic>.from(x)),
+    );
   }
 
   void _scheduleSave() {
@@ -125,39 +170,42 @@ class Library extends ChangeNotifier {
   }
 
   Map<String, dynamic> _toMap({required bool includeAccounts}) => {
-      'podcasts': podcasts.values.map((x) {
-        final j = x.toJson();
-        if (!includeAccounts) j['password'] = '';
-        return j;
-      }).toList(),
-      'episodes': episodes.values.map((x) => x.toJson()).toList(),
-      'progress': progress.map((k, v) => MapEntry(k, v.toJson())),
-      'favorites': favorites.map((k, v) => MapEntry(k, {'on': v.on, 'at': v.at})),
-      'queue': queue,
-      'queueUpdatedAt': queueUpdatedAt,
-      'speed': speed,
-      'skipBackSec': skipBackSec,
-      'skipForwardSec': skipForwardSec,
-      'prefsUpdatedAt': prefsUpdatedAt,
-      'settings': settings.toJson(),
-      if (includeAccounts) ...{
-        'einkMode': einkMode,
-        'serverUrl': serverUrl,
-        'token': token,
-        'username': username,
-        'syncSeq': _syncSeq,
-        'dirty': _dirty,
-        'gServer': gServer,
-        'gUser': gUser,
-        'gPass': gPass,
-        'gDevice': gDevice,
-        'gRegistered': _gRegistered,
-        'gSubsSince': _gSubsSince,
-        'gActionsSince': _gActionsSince,
-        'gDirty': _gDirty,
-        'gPending': _gPending,
-      },
-    };
+    'podcasts': podcasts.values.map((x) {
+      final j = x.toJson();
+      if (!includeAccounts) j['password'] = '';
+      return j;
+    }).toList(),
+    'episodes': episodes.values.map((x) => x.toJson()).toList(),
+    'progress': progress.map((k, v) => MapEntry(k, v.toJson())),
+    'favorites': favorites.map((k, v) => MapEntry(k, {'on': v.on, 'at': v.at})),
+    'ratings': ratings.map(
+      (k, v) => MapEntry(k, {'stars': v.stars, 'at': v.at}),
+    ),
+    'queue': queue,
+    'queueUpdatedAt': queueUpdatedAt,
+    'speed': speed,
+    'skipBackSec': skipBackSec,
+    'skipForwardSec': skipForwardSec,
+    'prefsUpdatedAt': prefsUpdatedAt,
+    'settings': settings.toJson(),
+    if (includeAccounts) ...{
+      'einkMode': einkMode,
+      'serverUrl': serverUrl,
+      'token': token,
+      'username': username,
+      'syncSeq': _syncSeq,
+      'dirty': _dirty,
+      'gServer': gServer,
+      'gUser': gUser,
+      'gPass': gPass,
+      'gDevice': gDevice,
+      'gRegistered': _gRegistered,
+      'gSubsSince': _gSubsSince,
+      'gActionsSince': _gActionsSince,
+      'gDirty': _gDirty,
+      'gPending': _gPending,
+    },
+  };
 
   Future<void> saveNow() async {
     final f = _file;
@@ -173,7 +221,11 @@ class Library extends ChangeNotifier {
   // ---- backup, restore, reset ----------------------------------------------
 
   /// The whole library as JSON for a backup file. Sign-ins and feed passwords are left out.
-  String exportBackup() => jsonEncode({'format': 'podsync-backup', 'version': 1, ..._toMap(includeAccounts: false)});
+  String exportBackup() => jsonEncode({
+    'format': 'podsync-backup',
+    'version': 1,
+    ..._toMap(includeAccounts: false),
+  });
 
   /// Replaces podcasts, episodes, progress, favorites, queue and settings with a backup's.
   /// This device's sign-ins stay, and everything is queued for upload.
@@ -186,6 +238,7 @@ class Library extends ChangeNotifier {
     episodes.clear();
     progress.clear();
     favorites.clear();
+    ratings.clear();
     _applyMap(j, includeAccounts: false);
     for (final s in podcasts.values) {
       _touch('sub', s.feedUrl, s.updatedAt);
@@ -195,6 +248,9 @@ class Library extends ChangeNotifier {
     }
     for (final e in favorites.entries) {
       _touch('fav', e.key, e.value.at);
+    }
+    for (final e in ratings.entries) {
+      _touch('rate', e.key, e.value.at);
     }
     queueUpdatedAt = _now();
     prefsUpdatedAt = queueUpdatedAt;
@@ -211,6 +267,8 @@ class Library extends ChangeNotifier {
     episodes.clear();
     progress.clear();
     favorites.clear();
+    ratings.clear();
+    _queueUndo.clear();
     queue = [];
     queueUpdatedAt = 0;
     speed = 1.0;
@@ -238,16 +296,27 @@ class Library extends ChangeNotifier {
   int _now() => DateTime.now().millisecondsSinceEpoch;
 
   /// Marks a record as needing upload. gPodder only knows subscriptions and progress.
-  void _touch(String type, String key, int at, {bool server = true, bool gpodder = true}) {
+  void _touch(
+    String type,
+    String key,
+    int at, {
+    bool server = true,
+    bool gpodder = true,
+  }) {
     if (server) _dirty['$type|$key'] = at;
-    if (gpodder && gpodderEnabled && (type == 'sub' || type == 'progress')) _gDirty['$type|$key'] = at;
+    if (gpodder && gpodderEnabled && (type == 'sub' || type == 'progress')) {
+      _gDirty['$type|$key'] = at;
+    }
   }
 
   // ---- subscriptions -----------------------------------------------------
 
   List<Podcast> get subscriptions =>
-      podcasts.values.where((x) => x.subscribed).toList()
-        ..sort((a, b) => a.displayTitle.toLowerCase().compareTo(b.displayTitle.toLowerCase()));
+      podcasts.values.where((x) => x.subscribed).toList()..sort(
+        (a, b) => a.displayTitle.toLowerCase().compareTo(
+          b.displayTitle.toLowerCase(),
+        ),
+      );
 
   bool isSubscribed(String feedUrl) => podcasts[feedUrl]?.subscribed ?? false;
 
@@ -263,16 +332,20 @@ class Library extends ChangeNotifier {
   }
 
   List<Episode> _sorted(Iterable<Episode> eps) => eps.toList()
-    ..sort((a, b) => settings.sortOldestFirst ? a.published.compareTo(b.published) : b.published.compareTo(a.published));
+    ..sort(
+      (a, b) => settings.sortOldestFirst
+          ? a.published.compareTo(b.published)
+          : b.published.compareTo(a.published),
+    );
 
   Future<ParsedFeed> _fetch(String feedUrl, {Podcast? pc}) => fetchFeed(
-        feedUrl,
-        client: _http,
-        username: pc?.username,
-        password: pc?.password,
-        timeout: Duration(seconds: settings.requestTimeoutSec),
-        userAgent: settings.effectiveUserAgent,
-      );
+    feedUrl,
+    client: _http,
+    username: pc?.username,
+    password: pc?.password,
+    timeout: Duration(seconds: settings.requestTimeoutSec),
+    userAgent: settings.effectiveUserAgent,
+  );
 
   Future<void> subscribe(String feedUrl) async {
     final parsed = await _fetch(feedUrl, pc: podcasts[feedUrl]);
@@ -322,10 +395,19 @@ class Library extends ChangeNotifier {
   Future<void> refreshFeed(String feedUrl) async {
     final pc = podcasts[feedUrl];
     final parsed = await _fetch(feedUrl, pc: pc);
-    final known = {for (final e in episodes.values) if (e.feedUrl == feedUrl) e.id: e.published};
+    final known = {
+      for (final e in episodes.values)
+        if (e.feedUrl == feedUrl) e.id: e.published,
+    };
     if (pc != null) _copyFeedMeta(pc, parsed.podcast);
     _mergeEpisodes(parsed.episodes);
-    if (pc != null && pc.subscribed && known.isNotEmpty) _queueNewEpisodes(pc, parsed.episodes, known);
+    if (pc != null && pc.subscribed && known.isNotEmpty) {
+      _queueNewEpisodes(pc, parsed.episodes, known);
+      final arrivals = parsed.episodes
+          .where((e) => !known.containsKey(e.id) && !progressOf(e.id).played)
+          .toList();
+      if (arrivals.isNotEmpty) onNewEpisodes?.call(pc, arrivals);
+    }
     _pruneEpisodes(feedUrl);
     _applyGpodderActions();
     _changed();
@@ -343,12 +425,24 @@ class Library extends ChangeNotifier {
     return settings.newEpisodesAction;
   }
 
-  void _queueNewEpisodes(Podcast pc, List<Episode> fresh, Map<String, int> known) {
+  void _queueNewEpisodes(
+    Podcast pc,
+    List<Episode> fresh,
+    Map<String, int> known,
+  ) {
     final action = _newEpisodesActionFor(pc);
     if (action == 0) return;
     final newestKnown = known.values.fold(0, max);
-    final arrivals = fresh.where((e) => !known.containsKey(e.id) && e.published >= newestKnown && !progressOf(e.id).played).toList()
-      ..sort((a, b) => a.published.compareTo(b.published));
+    final arrivals =
+        fresh
+            .where(
+              (e) =>
+                  !known.containsKey(e.id) &&
+                  e.published >= newestKnown &&
+                  !progressOf(e.id).played,
+            )
+            .toList()
+          ..sort((a, b) => a.published.compareTo(b.published));
     for (final e in arrivals) {
       if (queue.contains(e.id)) continue;
       action == 2 ? queue.insert(0, e.id) : queue.add(e.id);
@@ -364,21 +458,40 @@ class Library extends ChangeNotifier {
   void _pruneEpisodes(String feedUrl) {
     final limit = settings.maxEpisodesPerFeed;
     if (limit <= 0) return;
-    final eps = episodesOf(feedUrl)..sort((a, b) => b.published.compareTo(a.published));
+    final eps = episodesOf(feedUrl)
+      ..sort((a, b) => b.published.compareTo(a.published));
     for (final e in eps.skip(limit)) {
-      if (queue.contains(e.id) || isFavorite(e.id) || progress.containsKey(e.id)) continue;
+      if (queue.contains(e.id) ||
+          isFavorite(e.id) ||
+          progress.containsKey(e.id)) {
+        continue;
+      }
       episodes.remove(e.id);
     }
   }
 
   Future<void> refreshAll() async {
-    await Future.wait(subscriptions.map((s) => refreshFeed(s.feedUrl).catchError((Object e) {
+    await Future.wait(
+      subscriptions.map(
+        (s) => refreshFeed(s.feedUrl).catchError((Object e) {
           debugPrint('refresh ${s.feedUrl}: $e');
-        })));
+        }),
+      ),
+    );
   }
 
   /// Changes a podcast's own settings (custom name, speed, skip intro/ending, tags).
-  void updatePodcastSettings(String feedUrl, {String? customTitle, double? speed, bool clearSpeed = false, int? skipIntroSec, int? skipEndingSec, int? newEpisodesAction, List<String>? tags}) {
+  void updatePodcastSettings(
+    String feedUrl, {
+    String? customTitle,
+    double? speed,
+    bool clearSpeed = false,
+    int? skipIntroSec,
+    int? skipEndingSec,
+    int? newEpisodesAction,
+    Map<String, Object>? extra,
+    List<String>? tags,
+  }) {
     final pc = podcasts[feedUrl];
     if (pc == null) return;
     if (customTitle != null) pc.customTitle = customTitle;
@@ -386,7 +499,10 @@ class Library extends ChangeNotifier {
     if (speed != null) pc.speed = speed;
     if (skipIntroSec != null) pc.skipIntroSec = skipIntroSec;
     if (skipEndingSec != null) pc.skipEndingSec = skipEndingSec;
-    if (newEpisodesAction != null) pc.extra['newEpisodesAction'] = newEpisodesAction;
+    if (newEpisodesAction != null) {
+      pc.extra['newEpisodesAction'] = newEpisodesAction;
+    }
+    if (extra != null) pc.extra.addAll(extra);
     if (tags != null) pc.tags = tags;
     pc.updatedAt = _now();
     _touch('sub', feedUrl, pc.updatedAt, gpodder: false);
@@ -434,23 +550,50 @@ class Library extends ChangeNotifier {
   }
 
   List<Episode> get favoriteEpisodes => [
-        for (final e in favorites.entries)
-          if (e.value.on && episodes[e.key] != null) episodes[e.key]!,
-      ]..sort((a, b) => b.published.compareTo(a.published));
+    for (final e in favorites.entries)
+      if (e.value.on && episodes[e.key] != null) episodes[e.key]!,
+  ]..sort((a, b) => b.published.compareTo(a.published));
 
   /// Episodes you have listened to, most recent first.
   List<Episode> get historyEpisodes {
-    final ids = progress.entries.where((e) => e.value.lastPlayedAt > 0 && episodes[e.key] != null).toList()
-      ..sort((a, b) => b.value.lastPlayedAt.compareTo(a.value.lastPlayedAt));
+    final ids =
+        progress.entries
+            .where((e) => e.value.lastPlayedAt > 0 && episodes[e.key] != null)
+            .toList()
+          ..sort(
+            (a, b) => b.value.lastPlayedAt.compareTo(a.value.lastPlayedAt),
+          );
     return [for (final e in ids) episodes[e.key]!];
   }
 
   // ---- queue -------------------------------------------------------------
 
+  final List<(String, List<String>)> _queueUndo =
+      []; // (what changed, the queue before it)
+
   List<Episode> get queueEpisodes => [
-        for (final id in queue)
-          if (episodes[id] != null) episodes[id]!,
-      ];
+    for (final id in queue)
+      if (episodes[id] != null) episodes[id]!,
+  ];
+
+  bool get canUndoQueue => _queueUndo.isNotEmpty;
+
+  /// What [undoQueue] would take back, e.g. "Clear Up Next".
+  String get queueUndoLabel => _queueUndo.isEmpty ? '' : _queueUndo.last.$1;
+
+  void _snapshotQueue(String label) {
+    _queueUndo.add((label, List.of(queue)));
+    if (_queueUndo.length > 30) _queueUndo.removeAt(0);
+  }
+
+  /// Puts the queue back as it was before the last change. Returns what was undone.
+  String? undoQueue() {
+    if (_queueUndo.isEmpty) return null;
+    final last = _queueUndo.removeLast();
+    queue = last.$2;
+    _queueChanged();
+    return last.$1;
+  }
 
   void _queueChanged() {
     queueUpdatedAt = _now();
@@ -458,48 +601,264 @@ class Library extends ChangeNotifier {
     _changed();
   }
 
+  /// How much of an episode is left to hear.
+  Duration remainingOf(Episode e) {
+    final pr = progressOf(e.id);
+    if (pr.played) return Duration.zero;
+    final total = e.durationMs > 0 ? e.durationMs : pr.durationMs;
+    return Duration(milliseconds: (total - pr.positionMs).clamp(0, 1 << 40));
+  }
+
+  /// Time left across the whole queue, at each podcast's own speed.
+  Duration get queueRemaining {
+    var ms = 0.0;
+    for (final e in queueEpisodes) {
+      ms += remainingOf(e).inMilliseconds / speedFor(e.feedUrl);
+    }
+    return Duration(milliseconds: ms.round());
+  }
+
+  /// For each queued episode, how long from now until it would start playing.
+  List<Duration> get queueStartOffsets {
+    final out = <Duration>[];
+    var ms = 0.0;
+    for (final e in queueEpisodes) {
+      out.add(Duration(milliseconds: ms.round()));
+      ms += remainingOf(e).inMilliseconds / speedFor(e.feedUrl);
+    }
+    return out;
+  }
+
   void enqueue(String id, {bool next = false}) {
+    _snapshotQueue(next ? 'Play Next' : 'Add to Up Next');
     queue.remove(id);
     next ? queue.insert(0, id) : queue.add(id);
     _queueChanged();
   }
 
-  void removeFromQueue(String id) {
-    if (queue.remove(id)) _queueChanged();
+  /// [undoable] is false for changes the player makes itself, like dropping a finished episode.
+  void removeFromQueue(String id, {bool undoable = true}) {
+    if (!queue.contains(id)) return;
+    if (undoable) _snapshotQueue('Remove from Up Next');
+    queue.remove(id);
+    _queueChanged();
   }
 
   void reorderQueue(int from, int to) {
+    _snapshotQueue('Move in Up Next');
     if (to > from) to -= 1;
     queue.insert(to, queue.removeAt(from));
     _queueChanged();
   }
 
   void clearQueue() {
+    if (queue.isEmpty) return;
+    _snapshotQueue('Clear Up Next');
     queue = [];
     _queueChanged();
+  }
+
+  /// Takes already-played episodes out of the queue. Returns how many.
+  int removePlayedFromQueue() {
+    final played = queue.where((id) => progressOf(id).played).toList();
+    if (played.isEmpty) return 0;
+    _snapshotQueue('Remove Played');
+    queue.removeWhere(played.contains);
+    _queueChanged();
+    return played.length;
+  }
+
+  /// Moves [ids] so they sit together just before the episode now at [toIndex]
+  /// (queue.length = the end), keeping their relative order. Drag and drop uses this.
+  void moveQueueItems(List<String> ids, int toIndex) {
+    final moving = queue.where(ids.contains).toList();
+    if (moving.isEmpty) return;
+    _snapshotQueue('Move in Up Next');
+    final target = toIndex.clamp(0, queue.length);
+    final before = queue.take(target).where(ids.contains).length;
+    queue.removeWhere(ids.contains);
+    queue.insertAll((target - before).clamp(0, queue.length), moving);
+    _queueChanged();
+  }
+
+  /// Moves the given queued episodes one step up (delta -1) or down (delta 1).
+  void nudgeInQueue(List<String> ids, int delta) {
+    final selected = ids.toSet();
+    final before = List.of(queue);
+    if (delta < 0) {
+      for (var i = 1; i < queue.length; i++) {
+        if (selected.contains(queue[i]) && !selected.contains(queue[i - 1])) {
+          final t = queue[i];
+          queue[i] = queue[i - 1];
+          queue[i - 1] = t;
+        }
+      }
+    } else {
+      for (var i = queue.length - 2; i >= 0; i--) {
+        if (selected.contains(queue[i]) && !selected.contains(queue[i + 1])) {
+          final t = queue[i];
+          queue[i] = queue[i + 1];
+          queue[i + 1] = t;
+        }
+      }
+    }
+    if (listEquals(before, queue)) return;
+    _queueUndo.add(('Move in Up Next', before));
+    _queueChanged();
+  }
+
+  /// Re-orders the whole queue. Whatever is playing now ([pinId], if it is first) stays put.
+  void sortQueue(QueueSort mode, {String? pinId}) {
+    final pin = (pinId != null && queue.isNotEmpty && queue.first == pinId)
+        ? pinId
+        : null;
+    final rest = queue.where((id) => id != pin).toList();
+    final known = <(int, Episode)>[
+      for (var i = 0; i < rest.length; i++)
+        if (episodes[rest[i]] != null) (i, episodes[rest[i]]!),
+    ];
+    final unknown = rest.where((id) => episodes[id] == null).toList();
+    int byTitle(Episode a, Episode b) =>
+        a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    int cmp(Episode a, Episode b) => switch (mode) {
+      QueueSort.oldestFirst => a.published.compareTo(b.published),
+      QueueSort.newestFirst => b.published.compareTo(a.published),
+      QueueSort.title => byTitle(a, b),
+      QueueSort.podcast => () {
+        final c = podcastTitle(a.feedUrl)
+            .toLowerCase()
+            .compareTo(podcastTitle(b.feedUrl).toLowerCase());
+        return c != 0 ? c : a.published.compareTo(b.published);
+      }(),
+      QueueSort.shortest => remainingOf(a).compareTo(remainingOf(b)),
+      QueueSort.longest => remainingOf(b).compareTo(remainingOf(a)),
+    };
+    // Dart's sort is not stable, so ties fall back to the old position.
+    known.sort((x, y) {
+      final c = cmp(x.$2, y.$2);
+      return c != 0 ? c : x.$1.compareTo(y.$1);
+    });
+    _snapshotQueue('Sort Up Next');
+    queue = [?pin, for (final k in known) k.$2.id, ...unknown];
+    _queueChanged();
+  }
+
+  void shuffleQueue({String? pinId}) {
+    final pin = (pinId != null && queue.isNotEmpty && queue.first == pinId)
+        ? pinId
+        : null;
+    final rest = queue.where((id) => id != pin).toList()..shuffle(Random());
+    _snapshotQueue('Shuffle Up Next');
+    queue = [?pin, ...rest];
+    _queueChanged();
+  }
+
+  // ---- counts and listening totals ---------------------------------------------
+
+  /// Sum of the full lengths of everything in the queue.
+  Duration get queueTotalLength => Duration(
+    milliseconds: queueEpisodes.fold(
+      0,
+      (a, e) =>
+          a + (e.durationMs > 0 ? e.durationMs : progressOf(e.id).durationMs),
+    ),
+  );
+
+  /// Unplayed episodes of subscribed podcasts.
+  int get unplayedCount {
+    final subs = {
+      for (final p in podcasts.values)
+        if (p.subscribed) p.feedUrl,
+    };
+    var n = 0;
+    for (final e in episodes.values) {
+      if (subs.contains(e.feedUrl) && !progressOf(e.id).played) n++;
+    }
+    return n;
+  }
+
+  int get favoriteCount => favorites.entries
+      .where((f) => f.value.on && episodes.containsKey(f.key))
+      .length;
+
+  int get historyCount => progress.entries
+      .where((p) => p.value.lastPlayedAt > 0 && episodes.containsKey(p.key))
+      .length;
+
+  /// How much you have listened to, by podcast. Based on progress, so it is an estimate:
+  /// a finished episode counts in full and a started one counts up to where you are.
+  LibraryStats stats() {
+    final out = LibraryStats();
+    final byFeed = <String, PodcastStats>{};
+    for (final e in episodes.values) {
+      final pc = podcasts[e.feedUrl];
+      final ps = byFeed.putIfAbsent(
+        e.feedUrl,
+        () => PodcastStats(e.feedUrl, pc?.displayTitle ?? e.feedUrl),
+      );
+      final pr = progressOf(e.id);
+      final length = e.durationMs > 0 ? e.durationMs : pr.durationMs;
+      final heard = pr.played
+          ? length
+          : pr.positionMs.clamp(0, length > 0 ? length : pr.positionMs);
+      ps.episodes++;
+      ps.length += Duration(milliseconds: length);
+      ps.listened += Duration(milliseconds: heard);
+      if (pr.played) {
+        ps.played++;
+      } else if (pr.positionMs > 0) {
+        out.inProgress++;
+      }
+    }
+    for (final ps in byFeed.values) {
+      out.episodes += ps.episodes;
+      out.played += ps.played;
+      out.listened += ps.listened;
+      out.length += ps.length;
+    }
+    out.perPodcast =
+        byFeed.values
+            .where(
+              (p) =>
+                  p.listened > Duration.zero ||
+                  (podcasts[p.feedUrl]?.subscribed ?? false),
+            )
+            .toList()
+          ..sort((a, b) => b.listened.compareTo(a.listened));
+    return out;
   }
 
   // ---- batch actions (right-click menus act on several episodes at once) -----
 
   /// Adds episodes to the queue, keeping their order. [next] puts them at the front instead.
   void enqueueAll(List<String> ids, {bool next = false}) {
+    _snapshotQueue(next ? 'Play Next' : 'Add to Up Next');
     queue.removeWhere(ids.contains);
     next ? queue.insertAll(0, ids) : queue.addAll(ids);
     _queueChanged();
   }
 
   void removeAllFromQueue(List<String> ids) {
-    final before = queue.length;
+    if (!queue.any(ids.contains)) return;
+    _snapshotQueue('Remove from Up Next');
     queue.removeWhere(ids.contains);
-    if (queue.length != before) _queueChanged();
+    _queueChanged();
   }
 
   /// Moves queued episodes to the top or bottom, keeping their relative order.
-  void moveInQueue(List<String> ids, {required bool toTop}) {
-    final moving = queue.where(ids.contains).toList();
-    queue.removeWhere(ids.contains);
-    toTop ? queue.insertAll(0, moving) : queue.addAll(moving);
-    _queueChanged();
+  void moveInQueue(List<String> ids, {required bool toTop}) =>
+      moveQueueItems(ids, toTop ? 0 : queue.length);
+
+  int ratingOf(String id) => ratings[id]?.stars ?? 0;
+
+  /// Sets a 0 to 5 star rating (0 clears it) on every given episode.
+  void setRatings(Iterable<String> ids, int stars) {
+    final now = _now();
+    for (final id in ids) {
+      ratings[id] = Rate(stars.clamp(0, 5), now);
+      _touch('rate', id, now);
+    }
+    _changed();
   }
 
   void markAllPlayed(Iterable<String> ids, bool played) {
@@ -568,6 +927,14 @@ class Library extends ChangeNotifier {
     _afterSettingChange(key);
   }
 
+  /// Shows everything in the interface again.
+  void resetInterface() {
+    for (final k in AppSettings.interfaceKeys) {
+      settings.reset(k);
+    }
+    _changed();
+  }
+
   void resetSettings() {
     for (final k in AppSettings.defaults.keys) {
       settings.reset(k);
@@ -582,8 +949,14 @@ class Library extends ChangeNotifier {
       prefsUpdatedAt = _now();
       _touch('setting', 'prefs', prefsUpdatedAt);
     }
-    if (key == 'dateStyle' || key == 'themeMode') currentDateStyle = settings.dateStyle;
-    if (key == 'refreshIntervalMin' || key == 'syncIntervalMin' || key == 'themeMode') _rescheduleTimers();
+    if (key == 'dateStyle' || key == 'themeMode') {
+      currentDateStyle = settings.dateStyle;
+    }
+    if (key == 'refreshIntervalMin' ||
+        key == 'syncIntervalMin' ||
+        key == 'themeMode') {
+      _rescheduleTimers();
+    }
     _changed();
   }
 
@@ -602,10 +975,16 @@ class Library extends ChangeNotifier {
     _refreshTimer?.cancel();
     _syncTimer?.cancel();
     _refreshTimer = settings.refreshIntervalMin > 0
-        ? Timer.periodic(Duration(minutes: settings.refreshIntervalMin), (_) => refreshAll())
+        ? Timer.periodic(
+            Duration(minutes: settings.refreshIntervalMin),
+            (_) => refreshAll(),
+          )
         : null;
     _syncTimer = settings.syncIntervalMin > 0
-        ? Timer.periodic(Duration(minutes: settings.syncIntervalMin), (_) => sync())
+        ? Timer.periodic(
+            Duration(minutes: settings.syncIntervalMin),
+            (_) => sync(),
+          )
         : null;
   }
 
@@ -745,16 +1124,28 @@ class Library extends ChangeNotifier {
 
   // ---- sync: PodSync server -------------------------------------------------
 
-  Uri _api(String path) => Uri.parse('${serverUrl.replaceAll(RegExp(r'/+$'), '')}$path');
+  Uri _api(String path) =>
+      Uri.parse('${serverUrl.replaceAll(RegExp(r'/+$'), '')}$path');
 
-  Future<void> signIn(String server, String user, String password, {bool register = false}) async {
+  Future<void> signIn(
+    String server,
+    String user,
+    String password, {
+    bool register = false,
+  }) async {
     serverUrl = server.trim();
     final res = await _http.post(
       _api(register ? '/api/register' : '/api/login'),
-      body: jsonEncode({'username': user, 'password': password, 'device': Platform.operatingSystem}),
+      body: jsonEncode({
+        'username': user,
+        'password': password,
+        'device': Platform.operatingSystem,
+      }),
     );
     if (res.statusCode != 200) {
-      throw Exception(res.body.trim().isEmpty ? 'HTTP ${res.statusCode}' : res.body.trim());
+      throw Exception(
+        res.body.trim().isEmpty ? 'HTTP ${res.statusCode}' : res.body.trim(),
+      );
     }
     token = jsonDecode(res.body)['token'];
     username = user;
@@ -768,6 +1159,9 @@ class Library extends ChangeNotifier {
     }
     for (final e in favorites.entries) {
       _touch('fav', e.key, e.value.at);
+    }
+    for (final e in ratings.entries) {
+      _touch('rate', e.key, e.value.at);
     }
     if (queueUpdatedAt > 0) _touch('queue', 'main', queueUpdatedAt);
     if (prefsUpdatedAt > 0) _touch('setting', 'prefs', prefsUpdatedAt);
@@ -812,21 +1206,54 @@ class Library extends ChangeNotifier {
           'key': key,
           'updated_at': pr.updatedAt,
           'deleted': false,
-          'data': {'pos': pr.positionMs, 'dur': pr.durationMs, 'played': pr.played, 'new': pr.isNew, 'lastPlayed': pr.lastPlayedAt},
+          'data': {
+            'pos': pr.positionMs,
+            'dur': pr.durationMs,
+            'played': pr.played,
+            'new': pr.isNew,
+            'lastPlayed': pr.lastPlayedAt,
+          },
         };
       case 'fav':
         final f = favorites[key];
         if (f == null) return null;
-        return {'type': type, 'key': key, 'updated_at': f.at, 'deleted': !f.on, 'data': {}};
+        return {
+          'type': type,
+          'key': key,
+          'updated_at': f.at,
+          'deleted': !f.on,
+          'data': {},
+        };
+      case 'rate':
+        final r = ratings[key];
+        if (r == null) return null;
+        return {
+          'type': type,
+          'key': key,
+          'updated_at': r.at,
+          'deleted': r.stars == 0,
+          'data': {'stars': r.stars},
+        };
       case 'queue':
-        return {'type': type, 'key': key, 'updated_at': queueUpdatedAt, 'deleted': false, 'data': {'items': queue}};
+        return {
+          'type': type,
+          'key': key,
+          'updated_at': queueUpdatedAt,
+          'deleted': false,
+          'data': {'items': queue},
+        };
       case 'setting':
         return {
           'type': type,
           'key': key,
           'updated_at': prefsUpdatedAt,
           'deleted': false,
-          'data': {'speed': speed, 'skipBack': skipBackSec, 'skipForward': skipForwardSec, 'more': settings.syncedJson()},
+          'data': {
+            'speed': speed,
+            'skipBack': skipBackSec,
+            'skipForward': skipForwardSec,
+            'more': settings.syncedJson(),
+          },
         };
     }
     return null;
@@ -841,15 +1268,23 @@ class Library extends ChangeNotifier {
       if (r != null) changes.add(r);
     });
     final res = await _http
-        .post(_api('/api/sync'), headers: {'Authorization': 'Bearer $token'}, body: jsonEncode({'since': _syncSeq, 'changes': changes}))
+        .post(
+          _api('/api/sync'),
+          headers: {'Authorization': 'Bearer $token'},
+          body: jsonEncode({'since': _syncSeq, 'changes': changes}),
+        )
         .timeout(const Duration(seconds: 30));
     if (res.statusCode == 401) {
       token = '';
       throw Exception('Signed out by the server, please sign in again');
     }
-    if (res.statusCode != 200) throw Exception('Sync failed (HTTP ${res.statusCode})');
+    if (res.statusCode != 200) {
+      throw Exception('Sync failed (HTTP ${res.statusCode})');
+    }
     final body = jsonDecode(res.body) as Map<String, dynamic>;
-    final newSubs = applyRemote(List<Map<String, dynamic>>.from(body['changes']));
+    final newSubs = applyRemote(
+      List<Map<String, dynamic>>.from(body['changes']),
+    );
     _syncSeq = body['seq'];
     // Only clear entries that were not modified again while the request was in flight.
     pushed.forEach((k, at) {
@@ -876,7 +1311,9 @@ class Library extends ChangeNotifier {
           final existing = podcasts[key];
           if (existing != null && existing.updatedAt >= at) break;
           final subscribed = !(c['deleted'] as bool);
-          if ((existing == null || !existing.subscribed) && subscribed) newSubs.add(key);
+          if ((existing == null || !existing.subscribed) && subscribed) {
+            newSubs.add(key);
+          }
           final pc = existing ?? Podcast(feedUrl: key);
           pc
             ..title = data['title'] ?? pc.title
@@ -886,7 +1323,9 @@ class Library extends ChangeNotifier {
             ..speed = (data['speed'] as num?)?.toDouble()
             ..skipIntroSec = data['skipIntro'] ?? pc.skipIntroSec
             ..skipEndingSec = data['skipEnding'] ?? pc.skipEndingSec
-            ..tags = data.containsKey('tags') ? List<String>.from(data['tags'] ?? []) : pc.tags
+            ..tags = data.containsKey('tags')
+                ? List<String>.from(data['tags'] ?? [])
+                : pc.tags
             ..subscribed = subscribed
             ..updatedAt = at;
           podcasts[key] = pc;
@@ -901,7 +1340,10 @@ class Library extends ChangeNotifier {
             durationMs: data['dur'] ?? 0,
             played: data['played'] ?? false,
             isNew: data['new'] ?? false,
-            lastPlayedAt: max(data['lastPlayed'] ?? 0, existing?.lastPlayedAt ?? 0),
+            lastPlayedAt: max(
+              data['lastPlayed'] ?? 0,
+              existing?.lastPlayedAt ?? 0,
+            ),
             updatedAt: at,
           );
           _touch('progress', key, at, server: false);
@@ -910,6 +1352,14 @@ class Library extends ChangeNotifier {
           final existing = favorites[key];
           if (existing != null && existing.at >= at) break;
           favorites[key] = Flag(!(c['deleted'] as bool), at);
+          break;
+        case 'rate':
+          final existing = ratings[key];
+          if (existing != null && existing.at >= at) break;
+          ratings[key] = Rate(
+            (c['deleted'] as bool) ? 0 : (data['stars'] ?? 0),
+            at,
+          );
           break;
         case 'queue':
           if (queueUpdatedAt >= at) break;
@@ -931,14 +1381,37 @@ class Library extends ChangeNotifier {
 
   // ---- sync: gPodder -------------------------------------------------------
 
-  GpodderClient _gClient() => GpodderClient(baseUrl: gServer, username: gUser, password: gPass, deviceId: gDevice, client: _http, userAgent: settings.effectiveUserAgent, timeout: Duration(seconds: settings.requestTimeoutSec));
+  GpodderClient _gClient() => GpodderClient(
+    baseUrl: gServer,
+    username: gUser,
+    password: gPass,
+    deviceId: gDevice,
+    client: _http,
+    userAgent: settings.effectiveUserAgent,
+    timeout: Duration(seconds: settings.requestTimeoutSec),
+  );
 
   /// Signs in to a gPodder server and uploads what this device already has.
-  Future<void> connectGpodder(String server, String user, String password) async {
-    final device = gDevice.isNotEmpty ? gDevice : 'podsync-${Platform.operatingSystem}-${Random().nextInt(1 << 32).toRadixString(36)}';
-    final client = GpodderClient(baseUrl: server, username: user, password: password, deviceId: device, client: _http);
+  Future<void> connectGpodder(
+    String server,
+    String user,
+    String password,
+  ) async {
+    final device = gDevice.isNotEmpty
+        ? gDevice
+        : 'podsync-${Platform.operatingSystem}-${Random().nextInt(1 << 32).toRadixString(36)}';
+    final client = GpodderClient(
+      baseUrl: server,
+      username: user,
+      password: password,
+      deviceId: device,
+      client: _http,
+    );
     await client.login();
-    await client.registerDevice('PodSync (${Platform.operatingSystem})', Platform.isAndroid ? 'mobile' : 'desktop');
+    await client.registerDevice(
+      'PodSync (${Platform.operatingSystem})',
+      Platform.isAndroid ? 'mobile' : 'desktop',
+    );
     gServer = server.trim().replaceAll(RegExp(r'/+$'), '');
     gUser = user;
     gPass = password;
@@ -951,7 +1424,9 @@ class Library extends ChangeNotifier {
       _gDirty['sub|${s.feedUrl}'] = s.updatedAt;
     }
     for (final e in progress.entries) {
-      if (e.value.positionMs > 0 || e.value.played) _gDirty['progress|${e.key}'] = e.value.updatedAt;
+      if (e.value.positionMs > 0 || e.value.played) {
+        _gDirty['progress|${e.key}'] = e.value.updatedAt;
+      }
     }
     _changed();
     await sync();
@@ -971,7 +1446,10 @@ class Library extends ChangeNotifier {
     final c = _gClient();
     if (!_gRegistered) {
       await c.login();
-      await c.registerDevice('PodSync (${Platform.operatingSystem})', Platform.isAndroid ? 'mobile' : 'desktop');
+      await c.registerDevice(
+        'PodSync (${Platform.operatingSystem})',
+        Platform.isAndroid ? 'mobile' : 'desktop',
+      );
       _gRegistered = true;
     }
 
@@ -1005,14 +1483,19 @@ class Library extends ChangeNotifier {
     _gSubsSince = subs.timestamp;
 
     // 2. Push subscription changes.
-    final subDirty = {for (final e in _gDirty.entries) if (e.key.startsWith('sub|')) e.key: e.value};
+    final subDirty = {
+      for (final e in _gDirty.entries)
+        if (e.key.startsWith('sub|')) e.key: e.value,
+    };
     final add = <String>[], remove = <String>[];
     subDirty.forEach((k, _) {
       final pc = podcasts[k.substring(4)];
       if (pc == null) return;
       (pc.subscribed ? add : remove).add(pc.feedUrl);
     });
-    if (add.isNotEmpty || remove.isNotEmpty) await c.pushSubscriptions(add, remove);
+    if (add.isNotEmpty || remove.isNotEmpty) {
+      await c.pushSubscriptions(add, remove);
+    }
     subDirty.forEach((k, at) {
       if (_gDirty[k] == at) _gDirty.remove(k);
     });
@@ -1024,14 +1507,18 @@ class Library extends ChangeNotifier {
     _gActionsSince = acts.timestamp;
 
     // 4. Push our progress.
-    final progDirty = {for (final e in _gDirty.entries) if (e.key.startsWith('progress|')) e.key: e.value};
+    final progDirty = {
+      for (final e in _gDirty.entries)
+        if (e.key.startsWith('progress|')) e.key: e.value,
+    };
     final outgoing = <Map<String, dynamic>>[];
     progDirty.forEach((k, _) {
       final id = k.substring(9);
       final e = episodes[id];
       final pr = progress[id];
       if (e == null || pr == null) return;
-      final totalSec = (pr.durationMs > 0 ? pr.durationMs : e.durationMs) ~/ 1000;
+      final totalSec =
+          (pr.durationMs > 0 ? pr.durationMs : e.durationMs) ~/ 1000;
       final action = <String, dynamic>{
         'podcast': e.feedUrl,
         'episode': e.audioUrl,
@@ -1041,9 +1528,17 @@ class Library extends ChangeNotifier {
       };
       if (pr.played) {
         // A play action that reaches the end is how gPodder clients mark an episode finished.
-        action..['action'] = 'play'..['started'] = totalSec..['position'] = totalSec..['total'] = totalSec;
+        action
+          ..['action'] = 'play'
+          ..['started'] = totalSec
+          ..['position'] = totalSec
+          ..['total'] = totalSec;
       } else if (pr.positionMs > 0) {
-        action..['action'] = 'play'..['started'] = 0..['position'] = pr.positionMs ~/ 1000..['total'] = totalSec;
+        action
+          ..['action'] = 'play'
+          ..['started'] = 0
+          ..['position'] = pr.positionMs ~/ 1000
+          ..['total'] = totalSec;
       } else {
         action['action'] = 'new';
       }

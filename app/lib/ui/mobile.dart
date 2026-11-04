@@ -2,21 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/feed.dart';
+import '../core/downloads.dart';
 import '../core/library.dart';
 import '../core/models.dart';
 import '../core/player.dart';
+import 'downloads_ui.dart';
 import 'settings.dart';
+import 'sleep_ui.dart';
 import 'common.dart';
 import 'paged.dart';
 import 'podcast_settings.dart';
 
-enum _Section { queue, episodes, podcasts, add, settings }
+enum _Section { queue, episodes, podcasts, add, downloads, stats, settings }
 
 const _titles = {
   _Section.queue: 'Queue',
   _Section.episodes: 'Episodes',
   _Section.podcasts: 'Subscriptions',
   _Section.add: 'Add podcast',
+  _Section.downloads: 'Downloads',
+  _Section.stats: 'Statistics',
   _Section.settings: 'Settings',
 };
 
@@ -25,8 +30,15 @@ const _icons = {
   _Section.episodes: Icons.library_music,
   _Section.podcasts: Icons.subscriptions,
   _Section.add: Icons.add,
+  _Section.downloads: Icons.download_done,
+  _Section.stats: Icons.bar_chart,
   _Section.settings: Icons.settings,
 };
+
+/// Downloads and Statistics can be hidden in Settings; the other sections cannot.
+bool _hidden(Library lib, _Section s) =>
+    (s == _Section.downloads && !lib.settings.uiPhoneDownloads) ||
+    (s == _Section.stats && !lib.settings.uiPhoneStats);
 
 /// Phone/tablet UI modelled on AntennaPod: a navigation drawer, episode rows
 /// with a play button on the right, and a mini player docked at the bottom.
@@ -62,6 +74,8 @@ class _MobileShellState extends State<MobileShell> {
       _Section.episodes => const EpisodesView(),
       _Section.podcasts => const SubscriptionsView(),
       _Section.add => const AddPodcastView(),
+      _Section.downloads => const DownloadsView(),
+      _Section.stats => const StatsView(),
       _Section.settings => const SettingsHome(),
     };
 
@@ -112,15 +126,37 @@ class _MobileShellState extends State<MobileShell> {
                         ),
                       ),
                       for (final s in _Section.values)
-                        ListTile(
-                          leading: Icon(_icons[s]),
-                          title: Text(_titles[s]!),
-                          selected: s == section,
-                          onTap: () {
-                            _select(s);
-                            Navigator.pop(context);
-                          },
-                        ),
+                        if (!_hidden(lib, s))
+                          ListTile(
+                            leading: Icon(_icons[s]),
+                            title: Text(_titles[s]!),
+                            trailing: switch (s) {
+                              _Section.queue =>
+                                lib.queue.isEmpty
+                                    ? null
+                                    : Text('${lib.queue.length}'),
+                              _Section.episodes =>
+                                lib.unplayedCount == 0
+                                    ? null
+                                    : Text('${lib.unplayedCount}'),
+                              _Section.podcasts =>
+                                lib.subscriptions.isEmpty
+                                    ? null
+                                    : Text('${lib.subscriptions.length}'),
+                              _Section.downloads => (() {
+                                final n = context
+                                    .read<DownloadManager>()
+                                    .doneCount;
+                                return n == 0 ? null : Text('$n');
+                              })(),
+                              _ => null,
+                            },
+                            selected: s == section,
+                            onTap: () {
+                              _select(s);
+                              Navigator.pop(context);
+                            },
+                          ),
                     ],
                   ),
                 ),
@@ -146,35 +182,76 @@ class _EinkTabs extends StatelessWidget {
   final _Section section;
   final ValueChanged<_Section> onSelect;
 
+  static const _main = [
+    _Section.queue,
+    _Section.episodes,
+    _Section.podcasts,
+    _Section.add,
+  ];
+  static const _more = [_Section.downloads, _Section.stats, _Section.settings];
+
   @override
   Widget build(BuildContext context) {
+    Widget tab(String label, bool selected, {VoidCallback? onTap}) => Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 52,
+          alignment: Alignment.center,
+          color: selected ? Colors.black : null,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: selected ? Colors.white : Colors.black,
+            ),
+          ),
+        ),
+      ),
+    );
+
     return Container(
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(width: 2)),
       ),
       child: Row(
         children: [
-          for (final s in _Section.values)
-            Expanded(
-              child: InkWell(
-                onTap: () => onSelect(s),
-                child: Container(
-                  height: 52,
-                  alignment: Alignment.center,
-                  color: s == section ? Colors.black : null,
-                  child: Text(
-                    s == _Section.podcasts
-                        ? 'Podcasts'
-                        : (s == _Section.add ? 'Add' : _titles[s]!),
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: s == section ? Colors.white : Colors.black,
-                    ),
+          for (final s in _main)
+            tab(
+              s == _Section.podcasts
+                  ? 'Podcasts'
+                  : (s == _Section.add ? 'Add' : _titles[s]!),
+              s == section,
+              onTap: () => onSelect(s),
+            ),
+          // Downloads, Statistics and Settings live under one tab so the row stays readable.
+          Expanded(
+            child: PopupMenuButton<_Section>(
+              tooltip: 'More sections',
+              onSelected: onSelect,
+              itemBuilder: (c) => [
+                for (final s in _more)
+                  if (!_hidden(context.read<Library>(), s))
+                    PopupMenuItem(value: s, child: Text(_titles[s]!)),
+              ],
+              child: Container(
+                height: 52,
+                alignment: Alignment.center,
+                color: _more.contains(section) ? Colors.black : null,
+                child: Text(
+                  _more.contains(section) ? _titles[section]! : 'More',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: _more.contains(section)
+                        ? Colors.white
+                        : Colors.black,
                   ),
                 ),
               ),
             ),
+          ),
         ],
       ),
     );
@@ -220,30 +297,142 @@ class QueueView extends StatelessWidget {
   Widget build(BuildContext context) {
     final lib = context.watch<Library>();
     final items = lib.queueEpisodes;
+    final Widget list;
     if (!lib.einkMode && items.isNotEmpty) {
-      return ReorderableListView.builder(
+      list = ReorderableListView.builder(
         itemCount: items.length,
         onReorderItem: (from, to) =>
             lib.reorderQueue(from, to > from ? to + 1 : to),
         itemBuilder: (c, i) => Dismissible(
           key: ValueKey(items[i].id),
-          onDismissed: (_) => lib.removeFromQueue(items[i].id),
+          onDismissed: (_) {
+            lib.removeFromQueue(items[i].id);
+            showQueueUndo(context, lib, 'Removed from queue');
+          },
           background: Container(color: Colors.red.shade400),
           child: SizedBox(height: 88, child: EpisodeTile(items[i])),
         ),
       );
+    } else {
+      list = adaptiveList(
+        context,
+        items,
+        88,
+        (c, e) => EpisodeTile(e),
+        empty: 'Your queue is empty',
+      );
     }
-    return adaptiveList(
-      context,
-      items,
-      88,
-      (c, e) => EpisodeTile(e),
-      empty: 'Your queue is empty',
+    return Column(
+      children: [
+        if (items.isNotEmpty || lib.canUndoQueue) const _QueueSummary(),
+        Expanded(child: list),
+      ],
     );
   }
 }
 
-enum _EpisodeFilter { unplayed, all, favorites, history }
+const _queueSortLabels = {
+  QueueSort.oldestFirst: 'Release date, oldest first',
+  QueueSort.newestFirst: 'Release date, newest first',
+  QueueSort.title: 'Title',
+  QueueSort.podcast: 'Podcast',
+  QueueSort.shortest: 'Time left, shortest first',
+  QueueSort.longest: 'Time left, longest first',
+};
+
+/// Totals for the queue and the sort / shuffle / clean-up / undo menu.
+class _QueueSummary extends StatelessWidget {
+  const _QueueSummary();
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<Library>();
+    final pin = context.read<PlayerController>().current?.id;
+    final n = lib.queue.length;
+    final left = lib.queueRemaining;
+    final ends = DateTime.now().add(left);
+    final h = ends.hour % 12 == 0 ? 12 : ends.hour % 12;
+    final clock =
+        '$h:${ends.minute.toString().padLeft(2, '0')} ${ends.hour < 12 ? 'AM' : 'PM'}';
+
+    void done(String message) => showQueueUndo(context, lib, message);
+
+    return Container(
+      padding: const EdgeInsets.only(left: 16, right: 4),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: Theme.of(context).dividerColor),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                n == 0
+                    ? 'Nothing queued'
+                    : '$n episodes  ·  ${fmtLong(left, zero: 'nothing')} left  ·  ends about $clock',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Queue options',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) {
+              switch (v) {
+                case 'shuffle':
+                  lib.shuffleQueue(pinId: pin);
+                  done('Queue shuffled');
+                case 'played':
+                  done('Removed ${lib.removePlayedFromQueue()} played');
+                case 'clear':
+                  lib.clearQueue();
+                  done('Queue cleared');
+                case 'undo':
+                  lib.undoQueue();
+                default:
+                  lib.sortQueue(QueueSort.values.byName(v), pinId: pin);
+                  done('Queue sorted');
+              }
+            },
+            itemBuilder: (c) => [
+              if (lib.canUndoQueue)
+                PopupMenuItem(
+                  value: 'undo',
+                  child: Text('Undo ${lib.queueUndoLabel}'),
+                ),
+              for (final e in _queueSortLabels.entries)
+                PopupMenuItem(
+                  value: e.key.name,
+                  enabled: n > 1,
+                  child: Text('Sort: ${e.value}'),
+                ),
+              PopupMenuItem(
+                value: 'shuffle',
+                enabled: n > 1,
+                child: const Text('Shuffle'),
+              ),
+              PopupMenuItem(
+                value: 'played',
+                enabled: lib.queue.any((id) => lib.progressOf(id).played),
+                child: const Text('Remove played episodes'),
+              ),
+              PopupMenuItem(
+                value: 'clear',
+                enabled: n > 0,
+                child: const Text('Clear queue'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _EpisodeFilter { unplayed, all, downloaded, favorites, history }
 
 class EpisodesView extends StatefulWidget {
   const EpisodesView({super.key});
@@ -258,6 +447,7 @@ class _EpisodesViewState extends State<EpisodesView> {
   static const _labels = {
     _EpisodeFilter.unplayed: 'Unplayed',
     _EpisodeFilter.all: 'All',
+    _EpisodeFilter.downloaded: 'Offline',
     _EpisodeFilter.favorites: 'Favorites',
     _EpisodeFilter.history: 'History',
   };
@@ -265,15 +455,19 @@ class _EpisodesViewState extends State<EpisodesView> {
   @override
   Widget build(BuildContext context) {
     final lib = context.watch<Library>();
+    final dm = context.watch<DownloadManager>();
     final items = switch (filter) {
       _EpisodeFilter.unplayed =>
         lib.allEpisodes.where((e) => !lib.progressOf(e.id).played).toList(),
       _EpisodeFilter.all => lib.allEpisodes,
+      _EpisodeFilter.downloaded =>
+        lib.allEpisodes.where((e) => dm.isDownloaded(e.id)).toList(),
       _EpisodeFilter.favorites => lib.favoriteEpisodes,
       _EpisodeFilter.history => lib.historyEpisodes,
     };
     final empty = switch (filter) {
       _EpisodeFilter.favorites => 'No favorites yet',
+      _EpisodeFilter.downloaded => 'Nothing downloaded yet',
       _EpisodeFilter.history => 'Nothing played yet',
       _ =>
         lib.subscriptions.isEmpty
@@ -282,33 +476,34 @@ class _EpisodesViewState extends State<EpisodesView> {
     };
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
-          child: Row(
-            children: [
-              for (final f in _EpisodeFilter.values)
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: ChoiceChip(
-                      label: SizedBox(
-                        width: double.infinity,
-                        child: Text(
-                          _labels[f]!,
-                          textAlign: TextAlign.center,
-                          overflow: TextOverflow.ellipsis,
+        if (lib.settings.uiPhoneFilters)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+            child: Row(
+              children: [
+                for (final f in _EpisodeFilter.values)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: ChoiceChip(
+                        label: SizedBox(
+                          width: double.infinity,
+                          child: Text(
+                            _labels[f]!,
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
+                        showCheckmark: false,
+                        visualDensity: VisualDensity.compact,
+                        selected: filter == f,
+                        onSelected: (_) => setState(() => filter = f),
                       ),
-                      showCheckmark: false,
-                      visualDensity: VisualDensity.compact,
-                      selected: filter == f,
-                      onSelected: (_) => setState(() => filter = f),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async {
@@ -454,6 +649,7 @@ class EpisodeTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final lib = context.watch<Library>();
     final player = context.read<PlayerController>();
+    final dm = context.watch<DownloadManager>();
     final eink = lib.einkMode;
     final pr = lib.progressOf(e.id);
     final podcast = lib.podcasts[e.feedUrl];
@@ -473,6 +669,7 @@ class EpisodeTile extends StatelessWidget {
       else if (pr.positionMs > 0)
         '${fmtDurationMs(dur - pr.positionMs)} left',
       if (lib.isFavorite(e.id)) '\u2605',
+      if (eink && dm.isDownloaded(e.id)) 'Downloaded',
     ].where((s) => s.isNotEmpty).join(' • ');
 
     return InkWell(
@@ -480,7 +677,7 @@ class EpisodeTile extends StatelessWidget {
         context,
         MaterialPageRoute(builder: (_) => EpisodeScreen(e.id)),
       ),
-      onLongPress: eink ? null : () => _menu(context, lib),
+      onLongPress: () => _menu(context, lib),
       child: Padding(
         padding: const EdgeInsets.only(left: 12, right: 4, top: 6, bottom: 6),
         child: Row(
@@ -511,7 +708,12 @@ class EpisodeTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(meta, style: Theme.of(context).textTheme.bodySmall),
+                  Text(
+                    meta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                   if (fraction > 0 && !pr.played)
                     Padding(
                       padding: const EdgeInsets.only(top: 3),
@@ -523,6 +725,9 @@ class EpisodeTile extends StatelessWidget {
                 ],
               ),
             ),
+            // On e-ink the row is too narrow for this; the "Downloaded" note and the menu cover it.
+            if (!eink && lib.settings.uiRowDownloadIcon)
+              DownloadIcon(e, size: 22),
             IconButton(
               iconSize: 36,
               tooltip: isPlaying ? 'Pause' : 'Play',
@@ -533,6 +738,13 @@ class EpisodeTile extends StatelessWidget {
               ),
               onPressed: () => isCurrent ? player.toggle() : player.play(e),
             ),
+            // E-ink has no comfortable long-press, so show the menu button outright.
+            if (eink)
+              IconButton(
+                tooltip: 'More',
+                icon: const Icon(Icons.more_vert),
+                onPressed: () => _menu(context, lib),
+              ),
           ],
         ),
       ),
@@ -542,55 +754,139 @@ class EpisodeTile extends StatelessWidget {
   void _menu(BuildContext context, Library lib) {
     final inQueue = lib.queue.contains(e.id);
     final played = lib.progressOf(e.id).played;
+    final queueIndex = lib.queue.indexOf(e.id);
+    final dm = context.read<DownloadManager>();
+    final eink = lib.einkMode;
+
+    final entries = <(IconData, String, VoidCallback)>[
+      (Icons.playlist_play, 'Play next', () => lib.enqueue(e.id, next: true)),
+      (
+        inQueue ? Icons.remove_from_queue : Icons.add_to_queue,
+        inQueue ? 'Remove from queue' : 'Add to queue',
+        () {
+          if (inQueue) {
+            lib.removeFromQueue(e.id);
+            showQueueUndo(context, lib, 'Removed from queue');
+          } else {
+            lib.enqueue(e.id);
+          }
+        },
+      ),
+      (
+        dm.isDownloaded(e.id)
+            ? Icons.delete_outline
+            : (dm.isBusy(e.id) ? Icons.cancel_outlined : Icons.download),
+        dm.isDownloaded(e.id)
+            ? 'Remove download'
+            : (dm.isBusy(e.id) ? 'Cancel download' : 'Download'),
+        () => dm.isDownloaded(e.id)
+            ? dm.delete(e.id)
+            : (dm.isBusy(e.id) ? dm.cancel(e.id) : dm.download(e)),
+      ),
+      if (inQueue) ...[
+        (
+          Icons.vertical_align_top,
+          'Move to top',
+          () => lib.moveInQueue([e.id], toTop: true),
+        ),
+        if (queueIndex > 0)
+          (Icons.arrow_upward, 'Move up', () => lib.nudgeInQueue([e.id], -1)),
+        if (queueIndex < lib.queue.length - 1)
+          (
+            Icons.arrow_downward,
+            'Move down',
+            () => lib.nudgeInQueue([e.id], 1),
+          ),
+        (
+          Icons.vertical_align_bottom,
+          'Move to bottom',
+          () => lib.moveInQueue([e.id], toTop: false),
+        ),
+      ],
+      (
+        lib.isFavorite(e.id) ? Icons.star : Icons.star_border,
+        lib.isFavorite(e.id) ? 'Remove from favorites' : 'Add to favorites',
+        () => lib.setFavorite(e.id, !lib.isFavorite(e.id)),
+      ),
+      (
+        played ? Icons.visibility_off : Icons.check,
+        played ? 'Mark as unplayed' : 'Mark as played',
+        () => lib.markPlayed(e.id, !played),
+      ),
+    ];
+
     showModalBottomSheet(
       context: context,
-      builder: (c) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      isScrollControlled: true,
+      builder: (c) {
+        Widget rating() => Row(
           children: [
-            ListTile(
-              leading: const Icon(Icons.playlist_play),
-              title: const Text('Play next'),
-              onTap: () {
-                lib.enqueue(e.id, next: true);
+            const SizedBox(width: 16),
+            const Text('Rating'),
+            const Spacer(),
+            StarRating(
+              value: lib.ratingOf(e.id),
+              size: 28,
+              onChanged: (v) {
                 Navigator.pop(c);
+                lib.setRatings([e.id], v);
               },
             ),
-            ListTile(
-              leading: Icon(
-                inQueue ? Icons.remove_from_queue : Icons.add_to_queue,
-              ),
-              title: Text(inQueue ? 'Remove from queue' : 'Add to queue'),
-              onTap: () {
-                inQueue ? lib.removeFromQueue(e.id) : lib.enqueue(e.id);
-                Navigator.pop(c);
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                lib.isFavorite(e.id) ? Icons.star : Icons.star_border,
-              ),
-              title: Text(
-                lib.isFavorite(e.id)
-                    ? 'Remove from favorites'
-                    : 'Add to favorites',
-              ),
-              onTap: () {
-                lib.setFavorite(e.id, !lib.isFavorite(e.id));
-                Navigator.pop(c);
-              },
-            ),
-            ListTile(
-              leading: Icon(played ? Icons.visibility_off : Icons.check),
-              title: Text(played ? 'Mark as unplayed' : 'Mark as played'),
-              onTap: () {
-                lib.markPlayed(e.id, !played);
-                Navigator.pop(c);
-              },
-            ),
+            const SizedBox(width: 16),
           ],
-        ),
-      ),
+        );
+        return SafeArea(
+          child: eink
+              // No scrolling on e-ink: the actions become a wrapped grid of buttons that fits the screen.
+              ? Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final (icon, label, run) in entries)
+                            OutlinedButton.icon(
+                              icon: Icon(icon, size: 18),
+                              label: Text(label),
+                              onPressed: () {
+                                Navigator.pop(c);
+                                run();
+                              },
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      rating(),
+                    ],
+                  ),
+                )
+              : SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final (icon, label, run) in entries)
+                        ListTile(
+                          dense: true,
+                          leading: Icon(icon),
+                          title: Text(label),
+                          onTap: () {
+                            Navigator.pop(c);
+                            run();
+                          },
+                        ),
+                      ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.grade_outlined),
+                        title: rating(),
+                      ),
+                    ],
+                  ),
+                ),
+        );
+      },
     );
   }
 }
@@ -635,6 +931,7 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
     final inQueue = lib.queue.contains(id);
     final played = lib.progressOf(id).played;
     final fav = lib.isFavorite(id);
+    final dm = context.watch<DownloadManager>();
 
     final header = Padding(
       padding: const EdgeInsets.all(12),
@@ -691,6 +988,21 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
           onPressed: () => lib.setFavorite(id, !fav),
           icon: Icon(fav ? Icons.star : Icons.star_border),
           label: Text(fav ? 'Favorite' : 'Favorite?'),
+        ),
+        OutlinedButton.icon(
+          onPressed: dm.isDownloaded(id)
+              ? () => dm.delete(id)
+              : (dm.isBusy(id) ? () => dm.cancel(id) : () => dm.download(e)),
+          icon: Icon(
+            dm.isDownloaded(id)
+                ? Icons.delete_outline
+                : (dm.isBusy(id) ? Icons.close : Icons.download),
+          ),
+          label: Text(
+            dm.isDownloaded(id)
+                ? 'Remove download (${fmtBytes(dm.infoOf(id)!.bytes)})'
+                : (dm.isBusy(id) ? 'Cancel download' : 'Download'),
+          ),
         ),
         if (e.chapters.isNotEmpty)
           OutlinedButton(
@@ -797,6 +1109,37 @@ class _PodcastScreenState extends State<PodcastScreen> {
       appBar: AppBar(
         title: Text(p?.displayTitle ?? 'Podcast'),
         actions: [
+          if (subscribed)
+            PopupMenuButton<String>(
+              tooltip: 'Downloads',
+              icon: const Icon(Icons.download_for_offline_outlined),
+              onSelected: (v) {
+                final dm = context.read<DownloadManager>();
+                final todo = eps
+                    .where(
+                      (e) =>
+                          !lib.progressOf(e.id).played &&
+                          !dm.isDownloaded(e.id) &&
+                          !dm.isBusy(e.id),
+                    )
+                    .toList();
+                if (v == 'all') {
+                  dm.downloadAll(todo);
+                  showSnack(context, 'Downloading ${todo.length} episodes');
+                } else {
+                  for (final e in eps.where((e) => dm.isDownloaded(e.id))) {
+                    dm.delete(e.id);
+                  }
+                }
+              },
+              itemBuilder: (c) => const [
+                PopupMenuItem(
+                  value: 'all',
+                  child: Text('Download all unplayed'),
+                ),
+                PopupMenuItem(value: 'remove', child: Text('Remove downloads')),
+              ],
+            ),
           if (subscribed)
             IconButton(
               tooltip: 'Podcast settings',
@@ -991,8 +1334,12 @@ class MiniPlayer extends StatelessWidget {
   Widget build(BuildContext context) {
     final player = context.watch<PlayerController>();
     final lib = context.read<Library>();
+    // Listen for the setting too, so switching the mini player off in Settings takes effect at once.
+    final visible = context.select<Library, bool>(
+      (l) => l.settings.uiMiniPlayer,
+    );
     final e = player.current;
-    if (e == null) return const SizedBox.shrink();
+    if (e == null || !visible) return const SizedBox.shrink();
     final total = player.duration.inMilliseconds;
     return Material(
       elevation: lib.einkMode ? 0 : 8,
@@ -1088,6 +1435,7 @@ class PlayerScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text(lib.podcastTitle(e.feedUrl)),
         actions: [
+          if (lib.settings.uiPlayerSleep) const SleepTimerButton(),
           IconButton(
             tooltip: 'Show notes',
             icon: const Icon(Icons.notes),
@@ -1175,17 +1523,46 @@ class PlayerScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
-                  final i = speeds.indexWhere(
-                    (s) => (s - lib.speedFor(e.feedUrl)).abs() < 0.01,
-                  );
-                  player.setSpeed(speeds[(i + 1) % speeds.length]);
-                },
-                child: Text('Speed ${lib.speedFor(e.feedUrl)}×'),
-              ),
+              if (lib.settings.uiPlayerVolume)
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: lib.settings.muted ? 'Unmute' : 'Mute',
+                      icon: Icon(
+                        lib.settings.muted || lib.settings.volume == 0
+                            ? Icons.volume_off
+                            : (lib.settings.volume < 0.5
+                                  ? Icons.volume_down
+                                  : Icons.volume_up),
+                      ),
+                      onPressed: player.toggleMute,
+                    ),
+                    Expanded(
+                      child: Slider(
+                        value: lib.settings.muted ? 0.0 : lib.settings.volume,
+                        onChanged: player.setVolume,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 48,
+                      child: Text(
+                        '${((lib.settings.muted ? 0.0 : lib.settings.volume) * 100).round()}%',
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                  ],
+                ),
+              if (lib.settings.uiPlayerSpeed)
+                TextButton(
+                  onPressed: () {
+                    const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
+                    final i = speeds.indexWhere(
+                      (s) => (s - lib.speedFor(e.feedUrl)).abs() < 0.01,
+                    );
+                    player.setSpeed(speeds[(i + 1) % speeds.length]);
+                  },
+                  child: Text('Speed ${lib.speedFor(e.feedUrl)}×'),
+                ),
             ],
           ),
         ),

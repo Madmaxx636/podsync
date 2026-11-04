@@ -26,8 +26,10 @@ class ImportReport {
       if (queued > 0) '$queued in the queue',
       if (favorites > 0) '$favorites favorites',
       if (chapters > 0) '$chapters chapters',
-      if (skippedFeeds > 0) '$skippedFeeds local-folder podcasts skipped (their audio files are on the old phone)',
-      if (skippedEpisodes > 0) '$skippedEpisodes episodes without audio skipped',
+      if (skippedFeeds > 0)
+        '$skippedFeeds local-folder podcasts skipped (their audio files are on the old phone)',
+      if (skippedEpisodes > 0)
+        '$skippedEpisodes episodes without audio skipped',
       ...warnings,
     ];
     return lines.join('\n');
@@ -66,15 +68,28 @@ ImportReport importAntennaPodBackup(Library lib, String path) {
     throw FormatException('This file is not a database: $e');
   }
   final report = ImportReport();
-  final pending = <String, (Podcast, List<Episode>)>{}; // feeds collected during this import
+  final pending =
+      <
+        String,
+        (Podcast, List<Episode>)
+      >{}; // feeds collected during this import
   try {
-    final tables = {for (final r in db.select("SELECT name FROM sqlite_master WHERE type='table'")) r['name'] as String};
+    final tables = {
+      for (final r in db.select(
+        "SELECT name FROM sqlite_master WHERE type='table'",
+      ))
+        r['name'] as String,
+    };
     if (!tables.contains('Feeds') || !tables.contains('FeedItems')) {
-      throw const FormatException('This is not an AntennaPod database backup (no Feeds/FeedItems tables)');
+      throw const FormatException(
+        'This is not an AntennaPod database backup (no Feeds/FeedItems tables)',
+      );
     }
     final version = db.select('PRAGMA user_version').first.values.first as int;
     if (version > antennaPodKnownVersion) {
-      report.warnings.add('Backup is from a newer AntennaPod (database version $version); anything new in it was ignored.');
+      report.warnings.add(
+        'Backup is from a newer AntennaPod (database version $version); anything new in it was ignored.',
+      );
     }
 
     // Feeds -------------------------------------------------------------
@@ -89,9 +104,15 @@ ImportReport importAntennaPodBackup(Library lib, String path) {
       feedUrlById[_int(r, 'id')] = url;
 
       final speed = _col(r, 'feed_playback_speed');
-      final tags = _str(r, 'tags').split(_tagSeparator).where((t) => t.isNotEmpty && t != '#root').toList();
+      final tags = _str(r, 'tags')
+          .split(_tagSeparator)
+          .where((t) => t.isNotEmpty && t != '#root')
+          .toList();
       final image = _str(r, 'image_url');
-      final state = _int(r, 'state'); // 0 subscribed, 1 not subscribed, 2 archived
+      final state = _int(
+        r,
+        'state',
+      ); // 0 subscribed, 1 not subscribed, 2 archived
       final podcast = Podcast(
         feedUrl: url,
         title: _str(r, 'title'),
@@ -110,6 +131,8 @@ ImportReport importAntennaPodBackup(Library lib, String path) {
         password: _str(r, 'password'),
         extra: {
           'autoDownload': _int(r, 'auto_download', 1),
+          // AntennaPod's per-podcast "auto download" switch maps onto ours: off means never for this podcast.
+          'autoDownloadNew': _int(r, 'auto_download', 1) == 0 ? 2 : 0,
           'keepUpdated': _int(r, 'keep_updated', 1),
           'autoDeleteAction': _int(r, 'auto_delete_action'),
           'volumeAdaption': _int(r, 'feed_volume_adaption'),
@@ -147,13 +170,17 @@ ImportReport importAntennaPodBackup(Library lib, String path) {
     // Chapters ---------------------------------------------------------------
     final chaptersByItem = <int, List<Chapter>>{};
     if (tables.contains('SimpleChapters')) {
-      for (final r in db.select('SELECT * FROM SimpleChapters ORDER BY start')) {
-        (chaptersByItem[_int(r, 'feeditem')] ??= []).add(Chapter(
-          _int(r, 'start'),
-          _str(r, 'title'),
-          link: _str(r, 'link'),
-          imageUrl: _str(r, 'image_url'),
-        ));
+      for (final r in db.select(
+        'SELECT * FROM SimpleChapters ORDER BY start',
+      )) {
+        (chaptersByItem[_int(r, 'feeditem')] ??= []).add(
+          Chapter(
+            _int(r, 'start'),
+            _str(r, 'title'),
+            link: _str(r, 'link'),
+            imageUrl: _str(r, 'image_url'),
+          ),
+        );
       }
     }
 
@@ -222,7 +249,8 @@ ImportReport importAntennaPodBackup(Library lib, String path) {
     if (tables.contains('Queue')) {
       final ids = [
         for (final r in db.select('SELECT feeditem FROM Queue ORDER BY id ASC'))
-          if (idByItem[_int(r, 'feeditem')] != null) idByItem[_int(r, 'feeditem')]!,
+          if (idByItem[_int(r, 'feeditem')] != null)
+            idByItem[_int(r, 'feeditem')]!,
       ];
       report.queued = lib.importQueue(ids);
     }

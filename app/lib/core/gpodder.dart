@@ -14,8 +14,8 @@ class GpodderClient {
     http.Client? client,
     this.userAgent = 'PodSync/0.1',
     this.timeout = const Duration(seconds: 30),
-  })  : baseUrl = baseUrl.trim().replaceAll(RegExp(r'/+$'), ''),
-        _http = client ?? http.Client();
+  }) : baseUrl = baseUrl.trim().replaceAll(RegExp(r'/+$'), ''),
+       _http = client ?? http.Client();
 
   final String baseUrl;
   final String username;
@@ -26,10 +26,11 @@ class GpodderClient {
   final http.Client _http;
 
   Map<String, String> get _headers => {
-        'Authorization': 'Basic ${base64Encode(utf8.encode('$username:$password'))}',
-        'Content-Type': 'application/json',
-        'User-Agent': userAgent,
-      };
+    'Authorization':
+        'Basic ${base64Encode(utf8.encode('$username:$password'))}',
+    'Content-Type': 'application/json',
+    'User-Agent': userAgent,
+  };
 
   String get _user => Uri.encodeComponent(username);
 
@@ -39,15 +40,21 @@ class GpodderClient {
   }
 
   Never _fail(http.Response r) {
-    if (r.statusCode == 401) throw const GpodderException('Wrong username or password');
-    if (r.statusCode == 404) throw const GpodderException('Not found, check the server address');
+    if (r.statusCode == 401) {
+      throw const GpodderException('Wrong username or password');
+    }
+    if (r.statusCode == 404) {
+      throw const GpodderException('Not found, check the server address');
+    }
     throw GpodderException('gPodder server returned HTTP ${r.statusCode}');
   }
 
-  Future<http.Response> _get(Uri u) => _http.get(u, headers: _headers).timeout(timeout);
+  Future<http.Response> _get(Uri u) =>
+      _http.get(u, headers: _headers).timeout(timeout);
 
-  Future<http.Response> _post(Uri u, Object body) =>
-      _http.post(u, headers: _headers, body: jsonEncode(body)).timeout(timeout * 2);
+  Future<http.Response> _post(Uri u, Object body) => _http
+      .post(u, headers: _headers, body: jsonEncode(body))
+      .timeout(timeout * 2);
 
   /// Verifies the credentials.
   Future<void> login() async {
@@ -57,12 +64,20 @@ class GpodderClient {
 
   /// Creates this device on the server (or updates its name).
   Future<void> registerDevice(String caption, String type) async {
-    final r = await _post(_uri('/api/2/devices/$_user/${Uri.encodeComponent(deviceId)}.json'), {'caption': caption, 'type': type});
+    final r = await _post(
+      _uri('/api/2/devices/$_user/${Uri.encodeComponent(deviceId)}.json'),
+      {'caption': caption, 'type': type},
+    );
     if (r.statusCode != 200) _fail(r);
   }
 
   Future<SubscriptionChanges> subscriptionChanges(int since) async {
-    final r = await _get(_uri('/api/2/subscriptions/$_user/${Uri.encodeComponent(deviceId)}.json', {'since': '$since'}));
+    final r = await _get(
+      _uri(
+        '/api/2/subscriptions/$_user/${Uri.encodeComponent(deviceId)}.json',
+        {'since': '$since'},
+      ),
+    );
     if (r.statusCode != 200) _fail(r);
     final j = jsonDecode(r.body) as Map<String, dynamic>;
     return SubscriptionChanges(
@@ -83,13 +98,18 @@ class GpodderClient {
 
   /// Latest action per episode since [since] (0 = everything).
   Future<EpisodeActions> episodeActions(int since) async {
-    final r = await _get(_uri('/api/2/episodes/$_user.json', {'since': '$since', 'aggregated': 'true'}));
+    final r = await _get(
+      _uri('/api/2/episodes/$_user.json', {
+        'since': '$since',
+        'aggregated': 'true',
+      }),
+    );
     if (r.statusCode != 200) _fail(r);
     final j = jsonDecode(r.body) as Map<String, dynamic>;
-    return EpisodeActions(
-      [for (final a in (j['actions'] as List? ?? [])) Map<String, dynamic>.from(a)],
-      (j['timestamp'] as num?)?.toInt() ?? since,
-    );
+    return EpisodeActions([
+      for (final a in (j['actions'] as List? ?? []))
+        Map<String, dynamic>.from(a),
+    ], (j['timestamp'] as num?)?.toInt() ?? since);
   }
 
   Future<void> pushActions(List<Map<String, dynamic>> actions) async {
@@ -98,15 +118,18 @@ class GpodderClient {
   }
 
   /// gPodder wants "2009-12-12T09:00:00" (UTC, no zone suffix).
-  static String formatTime(int ms) =>
-      DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String().split('.').first;
+  static String formatTime(int ms) => DateTime.fromMillisecondsSinceEpoch(
+    ms,
+    isUtc: true,
+  ).toIso8601String().split('.').first;
 
   /// Accepts ISO 8601 with or without a zone (no zone means UTC), or a unix timestamp.
   static int parseTime(Object? v) {
     if (v is num) return v > 100000000000 ? v.toInt() : (v * 1000).toInt();
     if (v is! String || v.isEmpty) return 0;
     final hasZone = RegExp(r'(Z|[+-]\d{2}:?\d{2})$').hasMatch(v);
-    return DateTime.tryParse(hasZone ? v : '${v}Z')?.millisecondsSinceEpoch ?? 0;
+    return DateTime.tryParse(hasZone ? v : '${v}Z')?.millisecondsSinceEpoch ??
+        0;
   }
 }
 
