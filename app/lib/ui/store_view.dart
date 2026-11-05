@@ -11,6 +11,7 @@ import 'common.dart';
 import 'context_menus.dart';
 import 'paged.dart';
 import 'pal.dart';
+import 'zoom.dart';
 
 /// What the store is showing: the chart for the chosen category, or search results. It lives for
 /// the whole session, so going to a podcast and back finds the page as you left it.
@@ -551,7 +552,7 @@ class _CoverState extends State<_Cover> {
           );
           showPodcastMenu(
             context,
-            d.globalPosition,
+            Zoom.at(context, d.globalPosition),
             p.feedUrl,
             onOpen: widget.onOpen,
           );

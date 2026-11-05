@@ -6,6 +6,8 @@ class AppSettings {
     'themeMode': 'system', // system | light | dark
     'accent': 0xFF2196F3,
     'textScale': 1.0,
+    'zoom':
+        1.0, // desktop: scales the whole window (Ctrl + mouse wheel, Ctrl +/-)
     'compact': false,
     'showArtwork': true,
     'dateStyle': 'mdy', // mdy | dmy | iso
@@ -106,7 +108,8 @@ class AppSettings {
     'colRating': true,
     'colStarts': true,
     'sidebarWidth': 200.0,
-    'tableRowHeight': 22,
+    'colWidths': '', // dragged column widths, like 'podcast=240,time=80'
+    'tableRowHeight': 24,
     'colTime': true,
     'colPodcast': true,
     'colDate': true,
@@ -182,6 +185,20 @@ class AppSettings {
   String get themeMode => _get('themeMode');
   int get accent => _get('accent');
   double get textScale => _get('textScale');
+  double get zoom => _get('zoom');
+  String get colWidths => _get('colWidths');
+
+  /// The column widths the person dragged to, by column key.
+  Map<String, double> get colWidthMap {
+    final out = <String, double>{};
+    for (final part in colWidths.split(',')) {
+      final kv = part.split('=');
+      final w = kv.length == 2 ? double.tryParse(kv[1]) : null;
+      if (w != null && w > 0) out[kv[0]] = w;
+    }
+    return out;
+  }
+
   bool get compact => _get('compact');
   bool get showArtwork => _get('showArtwork');
   String get dateStyle => _get('dateStyle');
@@ -281,7 +298,7 @@ class AppSettings {
   ];
 
   /// Changes whenever something that affects the app-wide theme changes.
-  String get appearanceKey => '$themeMode|$accent|$textScale|$compact';
+  String get appearanceKey => '$themeMode|$accent|$textScale|$compact|$zoom';
 
   String get effectiveUserAgent =>
       userAgent.isEmpty ? 'PodSync/0.1' : userAgent;

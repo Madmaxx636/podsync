@@ -234,7 +234,7 @@ void main() {
     testWidgets(
       'desktop renders in dark mode without errors, with the settings pane',
       (tester) async {
-        tester.view.physicalSize = const Size(1200, 800);
+        tester.view.physicalSize = const Size(1200, 1100);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         final lib = libWithFeed(() => [1, 2]);

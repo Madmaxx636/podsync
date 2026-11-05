@@ -183,6 +183,16 @@ List<SettingsCategory> settingsCategories(
             },
           ),
         ],
+        if (!android && !lib.einkMode)
+          choice<double>(
+            'zoom',
+            'Zoom',
+            'Scales the whole window. Also Ctrl + mouse wheel, Ctrl + and Ctrl -',
+            {
+              for (final z in [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0])
+                z == 1.0 ? '100% (default)' : '${(z * 100).round()}%': z,
+            },
+          ),
         choice<double>('textScale', 'Text size', 'Scales all text in the app', {
           'Small': 0.85,
           'Default': 1.0,
@@ -798,45 +808,55 @@ List<SettingsCategory> settingsCategories(
         'Sidebar and table',
         Icons.view_sidebar_outlined,
         [
-          choice<double>('sidebarWidth', 'Sidebar width', '', {
+          const HeaderItem('Window'),
+          tog('showSidebar', 'Sidebar', 'The list of places on the left'),
+          choice<double>('sidebarWidth', 'Sidebar width', 'Or drag its edge', {
             'Narrow': 160.0,
             'Normal': 200.0,
             'Wide': 240.0,
             'Wider': 280.0,
           }),
-          choice<int>('tableRowHeight', 'Table row height', '', {
-            'Compact': 20,
-            'Normal': 22,
-            'Comfortable': 26,
-            'Large': 32,
-          }),
-          tog('showSidebar', 'Show sidebar', ''),
           tog(
             'showArtworkPane',
-            'Show artwork pane',
-            'The square under the sidebar showing what is playing',
+            'Artwork under the sidebar',
+            'The cover of what is playing. The cover in the top bar opens the mini player',
           ),
           tog(
             'showDetails',
-            'Show details pane',
+            'Details pane',
             'Artwork, notes and chapters of the selected episode',
           ),
-          tog('showStatusBar', 'Show status bar', ''),
+          tog(
+            'showStatusBar',
+            'Status bar',
+            'The line of totals at the bottom',
+          ),
           tog(
             'lcdRemaining',
-            'LCD shows time left',
+            'Top bar shows time left',
             'Off shows the total length; you can also click the time',
           ),
-          tog('colTime', 'Show Time column', ''),
+          const HeaderItem('Episode table'),
+          choice<int>('tableRowHeight', 'Row height', '', {
+            'Compact': 22,
+            'Normal': 24,
+            'Comfortable': 28,
+            'Large': 34,
+          }),
+          const InfoItem(
+            'Resizing',
+            'Drag the edge between two column headings to resize a column; double-click the edge to reset it.',
+          ),
+          tog('colTime', 'Time column', ''),
           tog(
             'colStarts',
-            'Show Starts in column',
+            'Starts in column',
             'In Up Next: when each episode would begin',
           ),
-          tog('colRating', 'Show Rating column', ''),
-          tog('colDownload', 'Show Download status column', ''),
-          tog('colPodcast', 'Show Podcast column', ''),
-          tog('colDate', 'Show Release Date column', ''),
+          tog('colRating', 'Rating column', ''),
+          tog('colDownload', 'Download status column', ''),
+          tog('colPodcast', 'Podcast column', ''),
+          tog('colDate', 'Release Date column', ''),
         ],
       ),
     if (!android)
@@ -1013,7 +1033,7 @@ class _AccountPage extends StatelessWidget {
 const _homeGroups = <(String, List<String>)>[
   ('Listening', ['Playback', 'Up Next', 'Downloads']),
   ('Library', ['Library and feeds', 'Podcasts', 'Sync', 'Import and backup']),
-  ('Display', ['Appearance', 'Interface', 'E-ink', 'Desktop layout', 'System']),
+  ('Display', ['Appearance', 'Desktop layout', 'Interface', 'E-ink', 'System']),
   ('About', ['Advanced and about']),
 ];
 
@@ -1284,7 +1304,8 @@ class SettingItemsView extends StatelessWidget {
   }
 }
 
-/// Settings on the desktop: group list on the left, the selected group on the right.
+/// Settings on the desktop: grouped page list on the left (with a search box that looks through
+/// every setting), the selected page on the right under its own title.
 class SettingsPane extends StatefulWidget {
   const SettingsPane({super.key, this.initial = 'Appearance'});
   final String initial;
@@ -1295,6 +1316,7 @@ class SettingsPane extends StatefulWidget {
 
 class _SettingsPaneState extends State<SettingsPane> {
   late String selected = widget.initial;
+  String query = '';
 
   @override
   Widget build(BuildContext context) {
@@ -1307,21 +1329,89 @@ class _SettingsPaneState extends State<SettingsPane> {
     );
     if (!cats.any((c) => c.title == selected)) selected = cats.first.title;
     final scheme = Theme.of(context).colorScheme;
+    final claimed = {for (final g in _homeGroups) ...g.$2};
+    final groups = <(String, List<SettingsCategory>)>[
+      for (final g in _homeGroups)
+        (g.$1, [for (final t in g.$2) ...cats.where((c) => c.title == t)]),
+      (
+        'More',
+        [
+          for (final c in cats)
+            if (!claimed.contains(c.title)) c,
+        ],
+      ),
+    ].where((g) => g.$2.isNotEmpty).toList();
+    final q = query.trim().toLowerCase();
+    final found = <SettingItem>[
+      if (q.isNotEmpty)
+        for (final c in cats)
+          for (final i in c.items)
+            if (i is! HeaderItem &&
+                i is! InfoItem &&
+                ('${i.title} ${i.subtitle}'.toLowerCase().contains(q)))
+              i,
+    ];
+    final cat = cats.firstWhere((c) => c.title == selected);
+
     return Row(
       children: [
         SizedBox(
-          width: 220,
-          child: ListView(
+          width: 250,
+          child: Column(
             children: [
-              for (final c in cats)
-                ListTile(
-                  dense: true,
-                  leading: Icon(c.icon, size: 20),
-                  title: Text(c.title),
-                  selected: c.title == selected,
-                  selectedTileColor: scheme.primary.withValues(alpha: 0.12),
-                  onTap: () => setState(() => selected = c.title),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                child: TextField(
+                  onChanged: (v) => setState(() => query = v),
+                  style: const TextStyle(fontSize: 14),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'Search settings',
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
                 ),
+              ),
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (final g in groups) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                        child: Text(
+                          g.$1.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.6,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      for (final c in g.$2)
+                        ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          leading: Icon(c.icon, size: 20),
+                          title: Text(
+                            c.title,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                          selected: q.isEmpty && c.title == selected,
+                          selectedTileColor: scheme.primary.withValues(
+                            alpha: 0.12,
+                          ),
+                          onTap: () => setState(() {
+                            selected = c.title;
+                            query = '';
+                          }),
+                        ),
+                    ],
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -1330,14 +1420,54 @@ class _SettingsPaneState extends State<SettingsPane> {
           child: Align(
             alignment: Alignment.topLeft,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: SettingsItems(selected),
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: q.isNotEmpty
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _paneTitle(
+                          'Search results',
+                          found.isEmpty
+                              ? 'Nothing matches "$query"'
+                              : '${found.length} settings',
+                        ),
+                        Expanded(child: SettingItemsView(found)),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _paneTitle(cat.title, cat.subtitle),
+                        Expanded(child: SettingItemsView(cat.items)),
+                      ],
+                    ),
             ),
           ),
         ),
       ],
     );
   }
+
+  Widget _paneTitle(String title, String sub) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+        ),
+        if (sub.isNotEmpty)
+          Text(
+            sub,
+            style: TextStyle(
+              fontSize: 13.5,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 class SettingRow extends StatelessWidget {

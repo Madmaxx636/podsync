@@ -19,6 +19,8 @@ import 'episode_filter.dart';
 import 'interface_menu.dart';
 import 'downloads_ui.dart';
 import 'pal.dart';
+import 'zoom.dart';
+import 'mini_player.dart';
 import 'podcast_settings.dart';
 import 'settings.dart';
 import 'store_view.dart';
@@ -190,13 +192,20 @@ class _DesktopShellState extends State<DesktopShell> {
           }.contains((source as _Library).kind));
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+    valueListenable: MiniPlayer.active,
+    builder: (context, mini, _) =>
+        mini ? const MiniPlayerView() : _buildFull(context),
+  );
+
+  Widget _buildFull(BuildContext context) {
     final lib = context.watch<Library>();
     final pal = Pal.of(context);
     final s = lib.settings;
     return CallbackShortcuts(
       bindings: {
         ...desktopShortcuts(context, _commands),
+        ...Zoom.shortcuts(lib),
         const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): _back,
         const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true):
             _forward,
@@ -658,7 +667,7 @@ class _Sidebar extends StatelessWidget {
       child: Text(
         t,
         style: TextStyle(
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.bold,
           color: pal.muted,
         ),
@@ -675,7 +684,7 @@ class _Sidebar extends StatelessWidget {
       final row = InkWell(
         onTap: () => onSelect(s),
         child: Container(
-          height: 26,
+          height: 28,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           color: sel ? pal.selected : null,
           child: Row(
@@ -688,7 +697,7 @@ class _Sidebar extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 14,
                     color: sel ? Colors.white : pal.text,
                   ),
                 ),
@@ -697,7 +706,7 @@ class _Sidebar extends StatelessWidget {
                 Text(
                   '$count',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     color: sel ? Colors.white70 : pal.muted,
                   ),
                 ),
@@ -709,7 +718,7 @@ class _Sidebar extends StatelessWidget {
       return GestureDetector(
         onSecondaryTapDown: (d) => showPodcastMenu(
           context,
-          d.globalPosition,
+          Zoom.at(context, d.globalPosition),
           s.feedUrl,
           onOpen: (f) => onSelect(_Show(f)),
         ),
@@ -725,8 +734,12 @@ class _Sidebar extends StatelessWidget {
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
-              onSecondaryTapDown: (d) =>
-                  showSidebarMenu(context, d.globalPosition, lib, onCustomize),
+              onSecondaryTapDown: (d) => showSidebarMenu(
+                context,
+                Zoom.at(context, d.globalPosition),
+                lib,
+                onCustomize,
+              ),
               child: ListView(
                 children: [
                   if (anyLibrary) header('Library'),
@@ -831,6 +844,21 @@ class _ArtworkPane extends StatelessWidget {
       (l) => l.settings.sidebarWidth,
     );
     final size = width.clamp(140.0, 260.0);
+    final hide = Tooltip(
+      message: 'Hide the artwork (View menu brings it back)',
+      child: InkWell(
+        onTap: () =>
+            context.read<Library>().setSetting('showArtworkPane', false),
+        child: Container(
+          padding: const EdgeInsets.all(3),
+          decoration: const BoxDecoration(
+            color: Colors.black54,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.close, size: 12, color: Colors.white),
+        ),
+      ),
+    );
     return Container(
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: pal.rule)),
@@ -848,9 +876,14 @@ class _ArtworkPane extends StatelessWidget {
             )
           : Tooltip(
               message: e.title,
-              child: InkWell(
-                onTap: () => onGoToPodcast(e.feedUrl),
-                child: Art(e.imageUrl, size: size, radius: 0),
+              child: Stack(
+                children: [
+                  InkWell(
+                    onTap: () => onGoToPodcast(e.feedUrl),
+                    child: Art(e.imageUrl, size: size, radius: 0),
+                  ),
+                  Positioned(top: 2, right: 2, child: hide),
+                ],
               ),
             ),
     );
@@ -865,7 +898,7 @@ class _StatusBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final pal = Pal.of(context);
     return Container(
-      height: 24,
+      height: 28,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -875,7 +908,14 @@ class _StatusBar extends StatelessWidget {
         ),
         border: Border(top: BorderSide(color: pal.rule)),
       ),
-      child: Text(text, style: TextStyle(fontSize: 11, color: pal.muted)),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: pal.text,
+        ),
+      ),
     );
   }
 }
@@ -918,8 +958,12 @@ class _PodcastGrid extends StatelessWidget {
       itemBuilder: (c, i) {
         final p = subs[i];
         return GestureDetector(
-          onSecondaryTapDown: (d) =>
-              showPodcastMenu(c, d.globalPosition, p.feedUrl, onOpen: onOpen),
+          onSecondaryTapDown: (d) => showPodcastMenu(
+            c,
+            Zoom.at(context, d.globalPosition),
+            p.feedUrl,
+            onOpen: onOpen,
+          ),
           child: InkWell(
             onTap: () => onOpen(p.feedUrl),
             child: Column(

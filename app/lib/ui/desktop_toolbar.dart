@@ -8,7 +8,9 @@ import '../core/models.dart';
 import '../core/player.dart';
 import 'common.dart';
 import 'interface_menu.dart';
+import 'mini_player.dart';
 import 'pal.dart';
+import 'zoom.dart';
 import 'sleep_ui.dart';
 
 /// iTunes' top bar: history arrows, transport, volume, the "LCD", Up Next, speed, search.
@@ -39,7 +41,7 @@ class DesktopToolbar extends StatelessWidget {
       borderSide: BorderSide(color: pal.rule),
     );
     return Container(
-      height: 64,
+      height: 68,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -51,8 +53,12 @@ class DesktopToolbar extends StatelessWidget {
       ),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onSecondaryTapDown: (d) =>
-            showToolbarMenu(context, d.globalPosition, lib, onCustomize),
+        onSecondaryTapDown: (d) => showToolbarMenu(
+          context,
+          Zoom.at(context, d.globalPosition),
+          lib,
+          onCustomize,
+        ),
         child: Row(
           children: [
             if (ui.uiSkipButtons)
@@ -217,7 +223,7 @@ class Lcd extends StatelessWidget {
       (l) => l.settings.lcdRemaining,
     );
     return Container(
-      height: 52,
+      height: 56,
       decoration: BoxDecoration(
         color: pal.lcd,
         borderRadius: BorderRadius.circular(5),
@@ -232,7 +238,13 @@ class Lcd extends StatelessWidget {
             )
           : Row(
               children: [
-                Art(e.imageUrl, size: 50, radius: 0),
+                Tooltip(
+                  message: 'Open the mini player',
+                  child: InkWell(
+                    onTap: MiniPlayer.open,
+                    child: Art(e.imageUrl, size: 56, radius: 0),
+                  ),
+                ),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -244,7 +256,7 @@ class Lcd extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 14.5,
                             height: 1.15,
                             fontWeight: FontWeight.w700,
                             color: pal.text,
@@ -257,22 +269,22 @@ class Lcd extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 12.5,
                               height: 1.15,
                               color: pal.muted,
                             ),
                           ),
                         ),
                         SizedBox(
-                          height: 16,
+                          height: 18,
                           child: Row(
                             children: [
                               SizedBox(
-                                width: 44,
+                                width: 50,
                                 child: Text(
                                   fmtDuration(player.position),
                                   style: TextStyle(
-                                    fontSize: 10,
+                                    fontSize: 11.5,
                                     color: pal.text,
                                   ),
                                 ),
@@ -304,7 +316,7 @@ class Lcd extends StatelessWidget {
                                 onTap: () =>
                                     lib.setSetting('lcdRemaining', !remaining),
                                 child: SizedBox(
-                                  width: 52,
+                                  width: 58,
                                   child: Text(
                                     total <= 0
                                         ? ''
@@ -313,7 +325,7 @@ class Lcd extends StatelessWidget {
                                               : fmtDuration(player.duration)),
                                     textAlign: TextAlign.right,
                                     style: TextStyle(
-                                      fontSize: 10,
+                                      fontSize: 11.5,
                                       color: pal.text,
                                     ),
                                   ),
@@ -343,11 +355,16 @@ class _UpNextButton extends StatelessWidget {
       isLabelVisible: count > 0,
       label: Text('$count'),
       offset: const Offset(-4, 4),
-      child: IconButton(
-        icon: const Icon(Icons.format_list_numbered),
-        tooltip: 'Up Next',
-        onPressed: () =>
-            showUpNextPopover(context, onGoToPodcast: onGoToPodcast),
+      child: Builder(
+        builder: (button) => IconButton(
+          icon: const Icon(Icons.format_list_numbered),
+          tooltip: 'Up Next',
+          onPressed: () => showUpNextPopover(
+            context,
+            onGoToPodcast: onGoToPodcast,
+            anchor: button,
+          ),
+        ),
       ),
     );
   }
@@ -357,20 +374,54 @@ class _UpNextButton extends StatelessWidget {
 Future<void> showUpNextPopover(
   BuildContext context, {
   required ValueChanged<String> onGoToPodcast,
-}) {
+  BuildContext? anchor,
+}) => _showPopover(
+  context,
+  'Close Up Next',
+  anchor,
+  (c) => _UpNextPanel(onGoToPodcast: onGoToPodcast),
+);
+
+/// Opens [panel] as a dropdown that hangs under [anchor] (the button that opened it), so Up Next
+/// and Downloads each sit under their own button. Without an anchor it drops from the top centre.
+Future<void> _showPopover(
+  BuildContext context,
+  String label,
+  BuildContext? anchor,
+  Widget Function(BuildContext) panel,
+) {
+  const panelWidth = 460.0;
+  Rect? at;
+  final box = anchor?.findRenderObject();
+  final overlay = Overlay.of(context).context.findRenderObject();
+  if (box is RenderBox && box.hasSize && overlay is RenderBox) {
+    at = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
+  }
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
-    barrierLabel: 'Close Up Next',
+    barrierLabel: label,
     barrierColor: Colors.transparent,
     transitionDuration: Duration.zero,
-    pageBuilder: (c, _, _) => Align(
-      alignment: Alignment.topCenter,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 60),
-        child: _UpNextPanel(onGoToPodcast: onGoToPodcast),
-      ),
-    ),
+    pageBuilder: (c, _, _) {
+      if (at == null) {
+        return Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 60),
+            child: panel(c),
+          ),
+        );
+      }
+      final width = MediaQuery.sizeOf(c).width;
+      final left = (at.right - panelWidth).clamp(
+        8.0,
+        (width - panelWidth - 8).clamp(8.0, width),
+      );
+      return Stack(
+        children: [Positioned(left: left, top: at.bottom + 6, child: panel(c))],
+      );
+    },
   );
 }
 
@@ -579,44 +630,40 @@ class _DownloadsButton extends StatelessWidget {
           : null,
       label: Text(running > 0 ? '$running' : '!'),
       offset: const Offset(-4, 4),
-      child: IconButton(
-        tooltip: busy ? 'Downloads: $running in progress' : 'Downloads',
-        icon: Icon(
-          busy ? Icons.downloading : Icons.download_for_offline_outlined,
+      child: Builder(
+        builder: (button) => IconButton(
+          tooltip: busy ? 'Downloads: $running in progress' : 'Downloads',
+          icon: Icon(
+            busy ? Icons.downloading : Icons.download_for_offline_outlined,
+          ),
+          onPressed: () => showDownloadsPopover(
+            context,
+            onOpenDownloads: onOpenDownloads,
+            anchor: button,
+          ),
         ),
-        onPressed: () =>
-            showDownloadsPopover(context, onOpenDownloads: onOpenDownloads),
       ),
     );
   }
 }
 
-/// A dropdown like Up Next's, for downloads: what is running with progress, what waits or failed,
-/// and what finished lately.
+/// A dropdown like Up Next's, for downloads: only what is in flight, with progress, what waits and
+/// what failed. Finished downloads live on the Downloads screen.
 Future<void> showDownloadsPopover(
   BuildContext context, {
   required VoidCallback onOpenDownloads,
-}) {
-  return showGeneralDialog<void>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: 'Close Downloads',
-    barrierColor: Colors.transparent,
-    transitionDuration: Duration.zero,
-    pageBuilder: (c, _, _) => Align(
-      alignment: Alignment.topCenter,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 60),
-        child: _DownloadsPanel(
-          onOpenDownloads: () {
-            Navigator.pop(c);
-            onOpenDownloads();
-          },
-        ),
-      ),
-    ),
-  );
-}
+  BuildContext? anchor,
+}) => _showPopover(
+  context,
+  'Close Downloads',
+  anchor,
+  (c) => _DownloadsPanel(
+    onOpenDownloads: () {
+      Navigator.pop(c);
+      onOpenDownloads();
+    },
+  ),
+);
 
 class _DownloadsPanel extends StatelessWidget {
   const _DownloadsPanel({required this.onOpenDownloads});
@@ -630,16 +677,7 @@ class _DownloadsPanel extends StatelessWidget {
     final active = dm.activeIds;
     final waiting = dm.queuedIds;
     final failed = dm.failedIds;
-    // The few most recent finished ones; the full list is on the Downloads screen.
-    final done =
-        (dm.doneIds..sort(
-              (a, b) =>
-                  (dm.infoOf(b)?.at ?? 0).compareTo(dm.infoOf(a)?.at ?? 0),
-            ))
-            .take(5)
-            .toList();
-    final nothing =
-        active.isEmpty && waiting.isEmpty && failed.isEmpty && done.isEmpty;
+    final nothing = active.isEmpty && waiting.isEmpty && failed.isEmpty;
 
     Widget section(String t) => Padding(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
@@ -726,7 +764,7 @@ class _DownloadsPanel extends StatelessWidget {
       if (active.isNotEmpty) '${active.length} downloading',
       if (waiting.isNotEmpty) '${waiting.length} waiting',
       if (failed.isNotEmpty) '${failed.length} failed',
-      '${dm.doneCount} downloaded · ${fmtBytes(dm.totalBytes)}',
+      if (active.isEmpty && waiting.isEmpty && failed.isEmpty) 'All done',
     ].join(' · ');
 
     return Material(
@@ -783,7 +821,7 @@ class _DownloadsPanel extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.all(28),
                 child: Text(
-                  'Nothing downloading.\nUse the cloud icon on an episode.',
+                  'Nothing downloading right now.\nFinished downloads are under Show All.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: pal.muted),
                 ),
@@ -824,27 +862,6 @@ class _DownloadsPanel extends StatelessWidget {
                             iconBtn(
                               Icons.close,
                               'Dismiss',
-                              () => dm.delete(id),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (done.isNotEmpty) section('RECENTLY DOWNLOADED'),
-                    for (final id in done)
-                      row(
-                        id,
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            iconBtn(Icons.play_arrow, 'Play', () {
-                              final e = lib.episodes[id];
-                              if (e != null) {
-                                context.read<PlayerController>().play(e);
-                              }
-                            }),
-                            iconBtn(
-                              Icons.delete_outline,
-                              'Delete download',
                               () => dm.delete(id),
                             ),
                           ],

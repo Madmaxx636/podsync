@@ -11,15 +11,22 @@ import 'core/directory.dart';
 import 'core/downloads.dart';
 import 'core/library.dart';
 import 'core/player.dart';
+import 'core/single_instance.dart';
 import 'core/updater.dart';
 import 'core/widget_bridge.dart';
 import 'ui/desktop.dart';
 import 'ui/mobile.dart';
 import 'ui/store_view.dart';
 import 'ui/update_ui.dart';
+import 'ui/zoom.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // A second launch (e.g. the taskbar icon while PodSync sits in the tray) wakes the running copy.
+  if (DesktopIntegration.supported &&
+      await SingleInstance.handOverToRunning()) {
+    exit(0);
+  }
   if (!Platform.isAndroid) {
     JustAudioMediaKit.ensureInitialized(linux: true, windows: true);
   }
@@ -56,7 +63,9 @@ Future<void> main(List<String> args) async {
   // Windows and Linux: tray icon, close to tray, start at login, media keys.
   if (DesktopIntegration.supported) {
     await DesktopIntegration.prepareWindow(library, args);
-    await DesktopIntegration(library, player, downloads: downloads).start();
+    final desktop = DesktopIntegration(library, player, downloads: downloads);
+    await desktop.start();
+    await SingleInstance.listen(desktop.showWindow);
   }
 
   runApp(
@@ -101,11 +110,14 @@ class PodSyncApp extends StatelessWidget {
               'dark' => ThemeMode.dark,
               _ => ThemeMode.system,
             },
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context)
-            .copyWith(textScaler: TextScaler.linear(s.textScale)),
-        child: child!,
-      ),
+      builder: (context, child) {
+        final app = MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(s.textScale)),
+          child: child!,
+        );
+        return Platform.isAndroid ? app : ZoomHost(child: app);
+      },
       home: UpdateGate(
         child: Platform.isAndroid ? const MobileShell() : const DesktopShell(),
       ),

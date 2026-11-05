@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0 - 2026-11-05
+
+- Fixed: after closing PodSync to the tray, clicking its icon on the taskbar or desktop opened a second copy. A second launch now just brings the running window back (Windows and Linux).
+- The Downloads dropdown hangs under its own button instead of sitting on top of Up Next, and lists only what is downloading, waiting or failed. Finished downloads are on the Downloads screen (Show All).
+- Click the cover in the top bar to open a mini player: a small always-on-top strip with the cover, title, scrubber and transport. Click the cover or the expand button to get the full window back (also View > Mini Player).
+- The artwork under the sidebar has a small close button; View > Show Artwork Pane brings it back.
+- Sharper, larger text in the top bar, status bar, sidebar and episode table, and a darker secondary text colour.
+- Zoom the whole window with Ctrl + mouse wheel, Ctrl + / Ctrl - and Ctrl 0 (also View menu and Settings > Appearance > Zoom, 80% to 200%).
+- Episode table columns can be resized by dragging the edge between two headings; double-click the edge to reset. Widths are remembered.
+- Desktop settings reorganised: pages grouped under Listening, Library, Display and About, a search box that finds any setting, a title for each page, and Desktop layout split into Window and Episode table sections.
+
 ## 0.6.0 - 2026-11-05
 
 - Android notification and lock screen rebuilt: cover art, episode and podcast name, a seek bar, and four buttons: rewind 10 s, play/pause, fast-forward 30 s and next in Up Next (the first three show when it is collapsed). Pressing play with nothing loaded starts Up Next. A proper one-colour status-bar icon.

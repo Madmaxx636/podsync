@@ -14,7 +14,9 @@ import '../core/library.dart';
 import '../core/opml.dart';
 import '../core/player.dart';
 import 'common.dart';
+import 'mini_player.dart';
 import 'pal.dart';
+import 'zoom.dart';
 import 'sleep_ui.dart';
 
 /// What the menu bar can ask the desktop shell to do.
@@ -259,6 +261,11 @@ class AppMenuBar extends StatelessWidget {
                         ],
                         child: const Text('Columns'),
                       ),
+                      const Divider(height: 1),
+                      item('Zoom In', () => Zoom.change(lib, Zoom.step)),
+                      item('Zoom Out', () => Zoom.change(lib, -Zoom.step)),
+                      item('Actual Size', () => Zoom.reset(lib)),
+                      item('Mini Player', MiniPlayer.toggle),
                       const Divider(height: 1),
                       item(
                         'Up Next Popover',

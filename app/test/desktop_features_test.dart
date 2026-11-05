@@ -10,6 +10,8 @@ import 'package:podsync/core/player.dart';
 import 'package:podsync/ui/desktop.dart';
 import 'package:podsync/ui/desktop_table.dart';
 import 'package:podsync/ui/desktop_toolbar.dart';
+import 'package:podsync/ui/mini_player.dart';
+import 'package:podsync/ui/zoom.dart';
 import 'package:provider/provider.dart';
 
 import 'fixtures.dart';
@@ -348,15 +350,85 @@ void main() {
     });
   });
 
+  group('window, zoom and columns', () {
+    testWidgets('the cover in the top bar opens the mini player, and back', (
+      tester,
+    ) async {
+      await pump(tester, playing: true);
+      expect(find.byType(MiniPlayerView), findsNothing);
+      await tester.tap(find.byTooltip('Open the mini player'));
+      await tester.pumpAndSettle();
+      expect(find.byType(MiniPlayerView), findsOneWidget);
+      expect(find.byType(EpisodeTable), findsNothing);
+      await tester.tap(find.byTooltip('Back to the full window').last);
+      await tester.pumpAndSettle();
+      expect(find.byType(MiniPlayerView), findsNothing);
+      expect(find.byType(EpisodeTable), findsOneWidget);
+    });
+
+    testWidgets('the artwork pane can be hidden from its corner button', (
+      tester,
+    ) async {
+      final (lib, _) = await pump(tester, playing: true);
+      await tester.tap(
+        find.byTooltip('Hide the artwork (View menu brings it back)'),
+      );
+      await tester.pump();
+      expect(lib.settings.showArtworkPane, isFalse);
+    });
+
+    testWidgets('dragging a column edge resizes it and the width is kept', (
+      tester,
+    ) async {
+      final (lib, _) = await pump(tester);
+      final before = tester.getSize(find.text('Release Date')).width;
+      // The Release Date column's left edge is the last resize handle in the heading row.
+      final handles = find.byWidgetPredicate(
+        (w) => w is MouseRegion && w.cursor == SystemMouseCursors.resizeColumn,
+      );
+      final date = handles.last;
+      await tester.drag(date, const Offset(-60, 0));
+      await tester.pump();
+      expect(lib.settings.colWidthMap['date'], greaterThan(128 + 30));
+      expect(before, greaterThan(0));
+      // Double-click the edge to put it back.
+      await tester.tap(handles.last);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(handles.last);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(lib.settings.colWidthMap.containsKey('date'), isFalse);
+    });
+
+    testWidgets('Ctrl and the plus, minus and 0 keys zoom the window', (
+      tester,
+    ) async {
+      final (lib, _) = await pump(tester);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.equal);
+      await tester.sendKeyEvent(LogicalKeyboardKey.equal);
+      expect(lib.settings.zoom, closeTo(1.2, 0.001));
+      await tester.sendKeyEvent(LogicalKeyboardKey.minus);
+      expect(lib.settings.zoom, closeTo(1.1, 0.001));
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit0);
+      expect(lib.settings.zoom, 1.0);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      expect(Zoom.min, lessThan(1));
+    });
+  });
+
   group('window chrome', () {
     testWidgets(
       'dragging the sidebar edge resizes it and the width is remembered',
       (tester) async {
         final (lib, _) = await pump(tester);
-        final edge = find.byWidgetPredicate(
-          (w) =>
-              w is MouseRegion && w.cursor == SystemMouseCursors.resizeColumn,
-        );
+        // The sidebar's edge is the first resize handle on screen (the table's column edges follow).
+        final edge = find
+            .byWidgetPredicate(
+              (w) =>
+                  w is MouseRegion &&
+                  w.cursor == SystemMouseCursors.resizeColumn,
+            )
+            .first;
         expect(lib.settings.sidebarWidth, 200.0);
         await tester.drag(edge, const Offset(60, 0));
         await tester.pump();

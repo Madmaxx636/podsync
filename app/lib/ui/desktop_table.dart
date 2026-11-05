@@ -10,6 +10,7 @@ import 'common.dart';
 import 'context_menus.dart';
 import 'downloads_ui.dart';
 import 'pal.dart';
+import 'zoom.dart';
 
 /// The iTunes-style list of episodes. In Up Next ([queueMode]) it also shows the
 /// play order, when each episode would start, and rows can be dragged into place.
@@ -60,6 +61,10 @@ class _EpisodeTableState extends State<EpisodeTable> {
   List<Episode> _shown = [];
   final Map<String, bool> _queueFlip =
       {}; // which direction each queue header sorts next
+  final Map<String, double> _dragging =
+      {}; // widths while a column edge is being dragged
+  double _avail = 0; // width of the table, so columns cannot be dragged past it
+  static const _minName = 160.0, _minCol = 40.0;
 
   @override
   void dispose() {
@@ -117,17 +122,34 @@ class _EpisodeTableState extends State<EpisodeTable> {
     _shown = eps;
 
     final showPodcast = widget.showPodcastColumn && s.colPodcast;
+    // Every column but Name has a width you can drag; Name takes whatever is left.
+    final saved = s.colWidthMap;
+    double w(String key, double fallback) =>
+        _dragging[key] ?? saved[key] ?? fallback;
     final cols = <_Col>[
       _Col('lead', '', width: queue ? 58 : 28),
       if (s.colDownload) const _Col('dl', '', width: 34),
-      const _Col('name', 'Name', flex: 4),
-      if (s.colTime) const _Col('time', 'Time', width: 70),
-      if (queue && s.colStarts) const _Col('starts', 'Starts in', width: 84),
-      if (showPodcast) const _Col('podcast', 'Podcast', flex: 2),
-      if (s.colRating) const _Col('rating', 'Rating', width: 84),
-      if (s.colDate) const _Col('date', 'Release Date', width: 116),
+      const _Col('name', 'Name', flex: 1),
+      if (s.colTime) _Col('time', 'Time', width: w('time', 84)),
+      if (queue && s.colStarts)
+        _Col('starts', 'Starts in', width: w('starts', 96)),
+      if (showPodcast) _Col('podcast', 'Podcast', width: w('podcast', 220)),
+      if (s.colRating) _Col('rating', 'Rating', width: w('rating', 92)),
+      if (s.colDate) _Col('date', 'Release Date', width: w('date', 128)),
       const _Col('play', '', width: 36),
     ];
+    double othersWidth(String key) => [
+      for (final c in cols)
+        if (c.width != null && c.key != key) c.width!,
+    ].fold(0.0, (a, b) => a + b);
+    void commitWidths() {
+      final all = {...saved, ..._dragging};
+      _dragging.clear();
+      lib.setSetting(
+        'colWidths',
+        all.entries.map((e) => '${e.key}=${e.value.round()}').join(','),
+      );
+    }
 
     // When each queued episode would start, for the "Starts in" column.
     final starts = <String, Duration>{};
@@ -154,7 +176,7 @@ class _EpisodeTableState extends State<EpisodeTable> {
                   c.label,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 12.5,
                     color: pal.text,
                     fontWeight: active ? FontWeight.bold : FontWeight.w500,
                   ),
@@ -170,9 +192,51 @@ class _EpisodeTableState extends State<EpisodeTable> {
           ),
         ),
       );
-      return c.width != null
-          ? SizedBox(width: c.width, child: child)
-          : Expanded(flex: c.flex, child: child);
+      if (c.width == null) return Expanded(flex: c.flex, child: child);
+      // The edge between this column and the one before it: drag to resize, double-click to reset.
+      final handle = Positioned(
+        left: -3,
+        top: 0,
+        bottom: 0,
+        width: 7,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.resizeColumn,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onDoubleTap: () {
+              _dragging.clear();
+              final rest = {...saved}..remove(c.key);
+              lib.setSetting(
+                'colWidths',
+                rest.entries
+                    .map((e) => '${e.key}=${e.value.round()}')
+                    .join(','),
+              );
+            },
+            onHorizontalDragUpdate: (d) {
+              final room = _avail - othersWidth(c.key) - _minName;
+              setState(
+                () => _dragging[c.key] = (c.width! - d.delta.dx).clamp(
+                  _minCol,
+                  room < _minCol ? _minCol : room,
+                ),
+              );
+            },
+            onHorizontalDragEnd: (_) => commitWidths(),
+            child: Center(child: Container(width: 1, color: pal.rule)),
+          ),
+        ),
+      );
+      return SizedBox(
+        width: c.width,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(child: child),
+            handle,
+          ],
+        ),
+      );
     }
 
     Widget cell(_Col c, Widget child) => c.width != null
@@ -185,7 +249,7 @@ class _EpisodeTableState extends State<EpisodeTable> {
       final playing = currentId == e.id;
       final fg = sel ? Colors.white : (pr.played ? pal.muted : pal.text);
       final st = TextStyle(
-        fontSize: 12,
+        fontSize: 13,
         color: fg,
         fontWeight: playing ? FontWeight.bold : null,
       );
@@ -332,7 +396,7 @@ class _EpisodeTableState extends State<EpisodeTable> {
           }
           showEpisodeMenu(
             context,
-            d.globalPosition,
+            Zoom.at(context, d.globalPosition),
             [
               for (final x in _shown)
                 if (selected.contains(x.id)) x,
@@ -425,26 +489,34 @@ class _EpisodeTableState extends State<EpisodeTable> {
       },
       child: Focus(
         focusNode: _focus,
-        child: Column(
-          children: [
-            GestureDetector(
-              onSecondaryTapDown: (d) =>
-                  _columnMenu(context, d.globalPosition, lib),
-              child: Container(
-                height: 22,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [pal.toolbarTop, pal.toolbarBottom],
+        child: LayoutBuilder(
+          builder: (context, box) {
+            _avail = box.maxWidth;
+            return Column(
+              children: [
+                GestureDetector(
+                  onSecondaryTapDown: (d) => _columnMenu(
+                    context,
+                    Zoom.at(context, d.globalPosition),
+                    lib,
                   ),
-                  border: Border(bottom: BorderSide(color: pal.rule)),
+                  child: Container(
+                    height: 25,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [pal.toolbarTop, pal.toolbarBottom],
+                      ),
+                      border: Border(bottom: BorderSide(color: pal.rule)),
+                    ),
+                    child: Row(children: [for (final c in cols) header(c)]),
+                  ),
                 ),
-                child: Row(children: [for (final c in cols) header(c)]),
-              ),
-            ),
-            Expanded(child: body),
-          ],
+                Expanded(child: body),
+              ],
+            );
+          },
         ),
       ),
     );

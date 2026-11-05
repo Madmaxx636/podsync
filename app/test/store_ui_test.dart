@@ -315,14 +315,11 @@ void main() {
         await dl.downloadAndWait(tester, rig);
         await tester.tap(find.byTooltip('Downloads'));
         await tester.pumpAndSettle();
-        expect(find.text('RECENTLY DOWNLOADED'), findsOneWidget);
-        expect(find.text('Ep Two'), findsWidgets);
-        expect(find.byTooltip('Delete download'), findsOneWidget);
-        expect(find.textContaining('1 downloaded'), findsWidgets);
-
-        await tester.tap(find.byTooltip('Delete download'));
-        await tester.pumpAndSettle();
-        expect(rig.dm.isDownloaded(dl.two), isFalse);
+        // Only what is in flight is listed; a finished download is not.
+        expect(find.text('RECENTLY DOWNLOADED'), findsNothing);
+        expect(find.byTooltip('Delete download'), findsNothing);
+        expect(find.textContaining('Nothing downloading'), findsOneWidget);
+        expect(rig.dm.isDownloaded(dl.two), isTrue);
         await tester.pump(const Duration(milliseconds: 600));
       },
     );
