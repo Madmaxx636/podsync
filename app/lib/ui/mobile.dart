@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/downloads.dart';
 import '../core/library.dart';
@@ -1147,6 +1148,39 @@ class EpisodeTile extends StatelessWidget {
 
 // ---- detail screens ----------------------------------------------------------
 
+/// A plain icon-and-label action in the row under the episode header, spread evenly.
+class _TextAction extends StatelessWidget {
+  const _TextAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        height: 52,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 24),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class EpisodeScreen extends StatefulWidget {
   const EpisodeScreen(this.id, {super.key});
   final String id;
@@ -1187,27 +1221,45 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
     final fav = lib.isFavorite(id);
     final dm = context.watch<DownloadManager>();
 
+    // AntennaPod's episode page: a compact header, one plain row with the main actions, and the
+    // rest (played, queue, favourite, open podcast, link) in the menu at the top right.
     final header = Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Art(e.imageUrl, size: eink ? 72 : 96, gray: eink),
-          const SizedBox(width: 12),
+          Art(e.imageUrl, size: 76, gray: eink),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
+                  lib.podcastTitle(e.feedUrl),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
                   e.title,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                    height: 1.2,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
+                const SizedBox(height: 2),
                 Text(
-                  '${lib.podcastTitle(e.feedUrl)}\n${fmtDate(e.published)}  ${fmtDurationMs(e.durationMs)}',
+                  '${fmtDurationMs(e.durationMs)} · ${fmtDate(e.published, year: false)}',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -1215,55 +1267,36 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
         ],
       ),
     );
-    final actions = Wrap(
-      spacing: 8,
-      runSpacing: 4,
+    final downloaded = dm.isDownloaded(id);
+    final actions = Row(
       children: [
-        FilledButton.icon(
-          onPressed: () {
+        _TextAction(
+          icon: Icons.play_arrow,
+          label: 'Play',
+          onTap: () {
             player.play(e);
             Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const PlayerScreen()),
             );
           },
-          icon: const Icon(Icons.play_arrow),
-          label: const Text('Play'),
         ),
-        OutlinedButton(
-          onPressed: () => inQueue ? lib.removeFromQueue(id) : lib.enqueue(id),
-          child: Text(inQueue ? 'Remove from queue' : 'Add to queue'),
-        ),
-        OutlinedButton(
-          onPressed: () => lib.markPlayed(id, !played),
-          child: Text(played ? 'Unplayed' : 'Played'),
-        ),
-        OutlinedButton.icon(
-          onPressed: () => lib.setFavorite(id, !fav),
-          icon: Icon(fav ? Icons.star : Icons.star_border),
-          label: Text(fav ? 'Unfavorite' : 'Favorite'),
-        ),
-        OutlinedButton.icon(
-          onPressed: dm.isDownloaded(id)
+        _TextAction(
+          icon: downloaded
+              ? Icons.delete_outline
+              : (dm.isBusy(id) ? Icons.close : Icons.download),
+          label: downloaded
+              ? 'Delete'
+              : (dm.isBusy(id) ? 'Cancel' : 'Download'),
+          onTap: downloaded
               ? () => dm.delete(id)
               : (dm.isBusy(id) ? () => dm.cancel(id) : () => dm.download(e)),
-          icon: Icon(
-            dm.isDownloaded(id)
-                ? Icons.delete_outline
-                : (dm.isBusy(id) ? Icons.close : Icons.download),
-          ),
-          label: Text(
-            dm.isDownloaded(id)
-                ? 'Remove download (${fmtBytes(dm.infoOf(id)!.bytes)})'
-                : (dm.isBusy(id) ? 'Cancel download' : 'Download'),
-          ),
         ),
         if (e.chapters.isNotEmpty)
-          OutlinedButton(
-            onPressed: () => setState(() => showChapters = !showChapters),
-            child: Text(
-              showChapters ? 'Show notes' : 'Chapters (${e.chapters.length})',
-            ),
+          _TextAction(
+            icon: showChapters ? Icons.notes : Icons.list,
+            label: showChapters ? 'Notes' : 'Chapters',
+            onTap: () => setState(() => showChapters = !showChapters),
           ),
       ],
     );
@@ -1297,23 +1330,97 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
           })
         : (eink
               ? PagedText(e.description)
-              : SingleChildScrollView(child: SelectableText(e.description)));
+              : SingleChildScrollView(
+                  child: SelectableText.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '${e.title}\n\n',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 17,
+                          ),
+                        ),
+                        TextSpan(
+                          text: e.description,
+                          style: const TextStyle(fontSize: 17, height: 1.35),
+                        ),
+                      ],
+                    ),
+                  ),
+                ));
 
     return Scaffold(
-      appBar: AppBar(title: Text(lib.podcastTitle(e.feedUrl))),
+      appBar: AppBar(
+        actions: [
+          if (e.link.isNotEmpty)
+            IconButton(
+              tooltip: 'Open in browser',
+              icon: const Icon(Icons.public),
+              onPressed: () => launchUrl(
+                Uri.parse(e.link),
+                mode: LaunchMode.externalApplication,
+              ),
+            ),
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            onSelected: (v) async {
+              switch (v) {
+                case 'played':
+                  lib.markPlayed(id, !played);
+                case 'queue':
+                  inQueue ? lib.removeFromQueue(id) : lib.enqueue(id);
+                case 'podcast':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => PodcastScreen(e.feedUrl)),
+                  );
+                case 'fav':
+                  lib.setFavorite(id, !fav);
+                case 'link':
+                  await Clipboard.setData(
+                    ClipboardData(
+                      text: e.link.isNotEmpty ? e.link : e.audioUrl,
+                    ),
+                  );
+                  if (context.mounted) showSnack(context, 'Link copied');
+              }
+            },
+            itemBuilder: (c) => [
+              PopupMenuItem(
+                value: 'played',
+                child: Text(played ? 'Mark as unplayed' : 'Mark as played'),
+              ),
+              PopupMenuItem(
+                value: 'queue',
+                child: Text(inQueue ? 'Remove from queue' : 'Add to queue'),
+              ),
+              const PopupMenuItem(
+                value: 'podcast',
+                child: Text('Open podcast'),
+              ),
+              PopupMenuItem(
+                value: 'fav',
+                child: Text(fav ? 'Remove from favorites' : 'Add to favorites'),
+              ),
+              const PopupMenuItem(
+                value: 'link',
+                child: Text('Share (copy link)'),
+              ),
+            ],
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             header,
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: actions,
-            ),
-            const Divider(),
+            actions,
+            const Divider(height: 1),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: content,
               ),
             ),
