@@ -121,6 +121,35 @@ It is only given to Let's Encrypt, the free service that issues the HTTPS padloc
   done
 fi
 
+# ---- 2b. ports 80 and 443 must be free for HTTPS ------------------------------------------------
+if [ $MODE = duckdns ]; then
+  busy=""
+  for p in 80 443; do
+    line=$(ss -ltnpH "sport = :$p" 2>/dev/null | head -1)
+    if [ -n "$line" ]; then
+      who=$(echo "$line" | grep -o 'users:.*' || true)
+      [ -n "$who" ] || who="a program run by another user (see: sudo ss -ltnp | grep ':$p ')"
+      busy="$busy\n  port $p is used by: $who"
+    fi
+  done
+  # Containers that publish them (ss shows docker-proxy, not the container name).
+  boxes=$(docker ps --format '{{.Names}}  {{.Ports}}' 2>/dev/null | grep -E '(:|^)(80|443)->' | grep -v '^podsync' || true)
+  if [ -n "$busy" ] || [ -n "$boxes" ]; then
+    msg "Ports 80 and 443 are already in use on this machine, so HTTPS cannot start:
+$(printf '%b' "$busy")
+${boxes:+
+Docker containers publishing them:
+$boxes
+}
+This is usually the old gPodder server or the web server in front of it. Stop it first, for example:
+  ./scripts/remove-gpodder.sh        (removes gPodder)
+  sudo systemctl disable --now nginx (or apache2)
+
+Then run ./setup.sh again. Nothing has been changed yet."
+    exit 1
+  fi
+fi
+
 # ---- 3. account and options -------------------------------------------------------------------
 USERNAME=$(ask "YOUR PODSYNC USERNAME\n\nThis is what you will type in the app to sign in. 3 to 32 characters: letters, numbers, dots, dashes or underscores. No spaces." "$USER")
 while :; do
@@ -174,7 +203,11 @@ done
 [ $ok = 1 ] || die "The server did not start. Look at: docker compose logs podsync"
 
 step "Creating your account"
-PODSYNC_PASSWORD="$PASS" ./scripts/adduser.sh "$USERNAME"
+if ./scripts/adduser.sh --list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$(echo "$USERNAME" | tr A-Z a-z)"; then
+  echo "The account $USERNAME already exists (from an earlier run); keeping it. Change its password with ./scripts/adduser.sh --passwd $USERNAME if needed."
+else
+  PODSYNC_PASSWORD="$PASS" ./scripts/adduser.sh "$USERNAME"
+fi
 [ $BACKUP = y ] && [ -z "${PODSYNC_NO_CRON:-}" ] && ./scripts/backup.sh --cron
 
 ip=$(hostname -I 2>/dev/null | awk '{print $1}')
