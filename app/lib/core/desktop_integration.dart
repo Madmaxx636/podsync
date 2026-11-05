@@ -12,6 +12,7 @@ import 'downloads.dart';
 import 'library.dart';
 import 'models.dart';
 import 'mpris.dart';
+import 'windows_media_keys.dart';
 import 'player.dart';
 
 /// Windows and Linux system integration: a tray icon, closing to the tray, starting at login, and
@@ -32,10 +33,17 @@ class DesktopIntegration with TrayListener, WindowListener {
   SMTCWindows? _smtc;
   StreamSubscription<PressedButton>? _smtcButtons;
   MprisService? _mpris;
+  WindowsMediaKeys? _keys;
+  DateTime _lastKey = DateTime.fromMillisecondsSinceEpoch(0);
+  String _lastKeyCommand = '';
+  DateTime _lastPlaying = DateTime.fromMillisecondsSinceEpoch(0);
   String _settingsKey = '';
   String _playerKey = '';
 
   static bool get supported => Platform.isWindows || Platform.isLinux;
+
+  /// What each part is doing, for Settings > System: 'Active' or why it is not working.
+  static final Map<String, String> status = {};
 
   /// Whether this launch should stay hidden (started at login, with the tray icon to open it).
   static bool startHidden(Library lib, List<String> args) =>
@@ -85,29 +93,45 @@ class DesktopIntegration with TrayListener, WindowListener {
     _applySettings();
   }
 
+  /// Runs one setup step on its own: a failure is recorded (and shown in Settings > System)
+  /// instead of stopping the steps after it.
+  Future<void> _step(String name, Future<void> Function() run) async {
+    try {
+      await run();
+    } catch (e, st) {
+      status[name] = 'Not working: $e';
+      // ignore: avoid_print
+      print('Desktop integration ($name): $e\n$st');
+    }
+  }
+
   Future<void> _applySettings({bool first = false}) async {
     final s = lib.settings;
     _settingsKey =
         '${s.trayIcon}|${s.closeToTray}|${s.startAtLogin}|${s.startMinimized}|${s.mediaControls}|${s.taskbarControls}';
-    try {
+    await _step('Tray icon', () async {
       if (s.trayIcon && !_trayOn) await _showTray();
       if (!s.trayIcon && _trayOn) await _hideTray();
+      status['Tray icon'] = s.trayIcon ? 'Active' : 'Off';
+    });
+    await _step('Closing the window', () async {
       // Without a tray icon there would be no way back to a hidden window, so closing quits.
       await windowManager.setPreventClose(s.closeToTray && _trayOn);
-      await _setStartAtLogin(s.startAtLogin);
-      await _setupNotifier();
+    });
+    await _step('Start at login', () => _setStartAtLogin(s.startAtLogin));
+    await _step('Notifications', _setupNotifier);
+    await _step('Taskbar buttons', () async {
       _taskbarKey = '';
-      _updateTaskbar();
+      await _updateTaskbar();
+    });
+    await _step('Media controls', () async {
       if (s.mediaControls) {
         await _startMedia();
       } else {
         await _stopMedia();
+        status['Media controls'] = 'Off';
       }
-    } catch (e) {
-      // None of this is essential; the app works without it.
-      // ignore: avoid_print
-      print('Desktop integration: $e');
-    }
+    });
   }
 
   // ---- window and tray -----------------------------------------------------------------
@@ -245,22 +269,41 @@ class DesktopIntegration with TrayListener, WindowListener {
   // ---- media controls ------------------------------------------------------------------
 
   Future<void> _startMedia() async {
-    if (Platform.isWindows && _smtc == null) {
-      await SMTCWindows.initialize();
-      final smtc = SMTCWindows(
-        config: const SMTCConfig(
-          playEnabled: true,
-          pauseEnabled: true,
-          nextEnabled: true,
-          prevEnabled: true,
-          stopEnabled: true,
-          fastForwardEnabled: true,
-          rewindEnabled: true,
-        ),
-      );
-      _smtc = smtc;
-      _smtcButtons = smtc.buttonPressStream.listen(_smtcPressed);
-      await _updateSmtc();
+    if (Platform.isWindows) {
+      // 1. The key hook: headphone and keyboard media keys, whichever app Windows would pick.
+      if (_keys == null) {
+        final keys = WindowsMediaKeys(_mediaKey);
+        try {
+          if (keys.start()) {
+            _keys = keys;
+          } else {
+            status['Media keys'] =
+                'Not working: Windows would not install the key hook';
+          }
+        } catch (e) {
+          status['Media keys'] = 'Not working: $e';
+        }
+        if (_keys != null) status['Media keys'] = 'Active';
+      }
+      // 2. The system media overlay and lock screen.
+      if (_smtc == null) {
+        await SMTCWindows.initialize();
+        final smtc = SMTCWindows(
+          config: const SMTCConfig(
+            playEnabled: true,
+            pauseEnabled: true,
+            nextEnabled: true,
+            prevEnabled: true,
+            stopEnabled: true,
+            fastForwardEnabled: true,
+            rewindEnabled: true,
+          ),
+        );
+        _smtc = smtc;
+        _smtcButtons = smtc.buttonPressStream.listen(_smtcPressed);
+        await _updateSmtc();
+      }
+      status['Media controls'] = 'Active (Windows media overlay)';
     } else if (Platform.isLinux && _mpris == null) {
       final m = MprisService(
         player: player,
@@ -270,10 +313,47 @@ class DesktopIntegration with TrayListener, WindowListener {
       );
       await m.start();
       _mpris = m;
+      status['Media controls'] =
+          'Active (MPRIS: media keys, GNOME/KDE widgets, playerctl)';
     }
   }
 
+  /// A media key seen by the Windows hook. PodSync takes the key when it is what the person is
+  /// listening to (playing now, or paused a short while ago) and leaves it for other apps otherwise.
+  bool _mediaKey(String command) {
+    if (player.playing) _lastPlaying = DateTime.now();
+    final mine =
+        player.current != null &&
+        (player.playing ||
+            DateTime.now().difference(_lastPlaying) <
+                const Duration(minutes: 30));
+    if (!mine) return false;
+    // A key can reach us twice (the hook and the system's media session): act once.
+    final now = DateTime.now();
+    if (command == _lastKeyCommand &&
+        now.difference(_lastKey) < const Duration(milliseconds: 400)) {
+      return true;
+    }
+    _lastKey = now;
+    _lastKeyCommand = command;
+    Future.microtask(() {
+      switch (command) {
+        case 'playpause':
+          player.toggle();
+        case 'next':
+          player.next();
+        case 'previous':
+          player.skipBack();
+        case 'stop':
+          if (player.playing) player.toggle();
+      }
+    });
+    return true;
+  }
+
   Future<void> _stopMedia() async {
+    _keys?.stop();
+    _keys = null;
     await _smtcButtons?.cancel();
     _smtcButtons = null;
     await _smtc?.dispose();
@@ -304,6 +384,7 @@ class DesktopIntegration with TrayListener, WindowListener {
   void _onPlayer() {
     final key = '${player.current?.id}|${player.playing}';
     if (key == _playerKey) return;
+    if (player.playing) _lastPlaying = DateTime.now();
     final episodeChanged = player.current?.id != _lastNotifiedId;
     _playerKey = key;
     _updateTrayMenu();

@@ -13,11 +13,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # apt on the runners sometimes hangs on a slow mirror, so: a time limit and retries.
       - name: Install build tools
+        timeout-minutes: 12
         working-directory: .
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libmpv-dev libasound2-dev libayatana-appindicator3-dev libnotify-dev
+          export DEBIAN_FRONTEND=noninteractive
+          for attempt in 1 2 3; do
+            sudo apt-get update -o Acquire::Retries=3 && \
+            timeout 300 sudo apt-get install -y -o Acquire::Retries=3 clang cmake ninja-build pkg-config libgtk-3-dev libmpv-dev libasound2-dev libayatana-appindicator3-dev libnotify-dev && break
+            echo "apt attempt $attempt failed, retrying"; sleep 10
+          done
+          dpkg -s libgtk-3-dev libmpv-dev libayatana-appindicator3-dev libnotify-dev >/dev/null
 
       - uses: subosito/flutter-action@v2
         with:

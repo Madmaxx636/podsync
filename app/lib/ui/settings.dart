@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/desktop_integration.dart';
 import '../core/downloads.dart';
 import '../core/library.dart';
 import '../core/updater.dart';
@@ -828,6 +829,11 @@ List<SettingsCategory> settingsCategories(
             'Media keys and system now-playing controls',
             'Play, pause and skip from the keyboard, headphones, the lock screen or the desktop\'s media widget (restart not needed)',
           ),
+          if (DesktopIntegration.status.isNotEmpty) ...[
+            const HeaderItem('Status'),
+            for (final e in DesktopIntegration.status.entries)
+              InfoItem(e.key, e.value),
+          ],
         ],
       ),
     SettingsCategory(

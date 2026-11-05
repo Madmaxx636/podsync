@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3 - 2026-11-05
+
+- Desktop: headphone and keyboard media buttons (Play/Pause, Next, Previous, Stop) now control PodSync on Windows through a direct key hook, so they work even when Windows would have handed them to a browser. PodSync takes the key only while it is what you are listening to (playing, or paused in the last half hour) and leaves it for other apps otherwise. The system media overlay and Linux's MPRIS controls stay as before.
+- Each desktop integration step (tray icon, closing to the tray, start at login, notifications, taskbar buttons, media controls) now runs on its own, so one failing step cannot stop the others; Settings > System shows what is Active or why something is not working.
+- Release builds on GitHub retry installing system packages instead of hanging.
+
 ## 0.5.2 - 2026-11-05
 
 - Settings are compact, like AntennaPod's: plain icons, bold titles with a short description, tighter spacing, small headings between groups, and a Search box at the top that finds any setting and lets you change it right there. E-ink pages fit more rows because headings and short rows take less room.
