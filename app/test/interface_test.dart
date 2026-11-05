@@ -132,7 +132,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Customize Interface…'));
         await tester.pumpAndSettle();
-        expect(find.text('MENU BAR AND TOOLBAR'), findsOneWidget);
+        expect(find.text('Menu bar and toolbar'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );
@@ -222,7 +222,7 @@ void main() {
           expect(find.text(t), findsOneWidget, reason: t);
         }
         expect(
-          find.text('MENU BAR AND TOOLBAR'),
+          find.text('Menu bar and toolbar'),
           findsOneWidget,
         ); // section captions
         await tester.tap(find.text('Sleep timer'));

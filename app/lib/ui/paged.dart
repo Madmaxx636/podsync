@@ -14,10 +14,18 @@ class PagedList<T> extends StatefulWidget {
     required this.itemExtent,
     required this.itemBuilder,
     this.empty = 'Nothing here',
+    this.extentOf,
+    this.keepWithNext,
   });
 
   final List<T> items;
   final double itemExtent;
+
+  /// Row height for one item, when rows differ (a heading is shorter than a setting).
+  final double Function(T)? extentOf;
+
+  /// Items (headings) that must not be left alone at the bottom of a page.
+  final bool Function(T)? keepWithNext;
   final Widget Function(BuildContext, T) itemBuilder;
   final String empty;
 
@@ -35,17 +43,36 @@ class _PagedListState<T> extends State<PagedList<T>> {
       builder: (context, c) {
         final swipe = context.read<Library>().settings.einkSwipe;
         // Bigger text needs taller rows, or fixed-height rows would clip.
-        final extent =
-            widget.itemExtent *
-            max(1.0, MediaQuery.textScalerOf(context).scale(14) / 14);
+        final scale = max(1.0, MediaQuery.textScalerOf(context).scale(14) / 14);
+        double extentFor(T item) =>
+            (widget.extentOf?.call(item) ?? widget.itemExtent) * scale;
         final inset = MediaQuery.viewPaddingOf(context).bottom;
-        final perPage = ((c.maxHeight - barHeight - inset) / extent)
-            .floor()
-            .clamp(1, 1000);
-        final pages = (widget.items.length / perPage).ceil().clamp(1, 100000);
+        final avail = c.maxHeight - barHeight - inset;
+        // Fill each page with as many rows as fit; a heading never ends a page on its own.
+        final ranges = <(int, int)>[];
+        final all = widget.items;
+        var from = 0;
+        while (from < all.length) {
+          var to = from;
+          var used = 0.0;
+          while (to < all.length &&
+              (to == from || used + extentFor(all[to]) <= avail + 0.5)) {
+            used += extentFor(all[to]);
+            to++;
+          }
+          if (to < all.length &&
+              to - from > 1 &&
+              (widget.keepWithNext?.call(all[to - 1]) ?? false)) {
+            to--;
+          }
+          ranges.add((from, to));
+          from = to;
+        }
+        final pages = ranges.isEmpty ? 1 : ranges.length;
         if (page >= pages) page = pages - 1;
-        final start = page * perPage;
-        final slice = widget.items.skip(start).take(perPage).toList();
+        final slice = ranges.isEmpty
+            ? <T>[]
+            : all.sublist(ranges[page].$1, ranges[page].$2);
 
         void go(int delta) {
           final n = (page + delta).clamp(0, pages - 1);
@@ -75,7 +102,7 @@ class _PagedListState<T> extends State<PagedList<T>> {
                         children: [
                           for (final item in slice)
                             SizedBox(
-                              height: extent,
+                              height: extentFor(item),
                               child: widget.itemBuilder(context, item),
                             ),
                         ],

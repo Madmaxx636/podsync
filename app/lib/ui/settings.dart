@@ -55,10 +55,14 @@ class TextItem extends SettingItem {
     this.get,
     this.set, {
     this.hint = '',
+    this.empty = 'Default',
   });
   final String Function() get;
   final void Function(String) set;
   final String hint;
+
+  /// What the row shows while the value is empty.
+  final String empty;
 }
 
 /// The place downloads are saved: shows the folder and opens the folder chooser.
@@ -950,8 +954,23 @@ const _homeGroups = <(String, List<String>)>[
   ('About', ['Advanced and about']),
 ];
 
-class SettingsHome extends StatelessWidget {
+/// Row heights for the paged (e-ink) settings lists, so a heading or a one-line setting does not
+/// take as much room as a setting with a long description.
+double settingExtent(SettingItem i) {
+  if (i is HeaderItem) return 40;
+  if (i.subtitle.isEmpty) return 56;
+  return i.subtitle.length > 44 ? 88 : 72;
+}
+
+class SettingsHome extends StatefulWidget {
   const SettingsHome({super.key});
+
+  @override
+  State<SettingsHome> createState() => _SettingsHomeState();
+}
+
+class _SettingsHomeState extends State<SettingsHome> {
+  String query = '';
 
   @override
   Widget build(BuildContext context) {
@@ -964,8 +983,9 @@ class SettingsHome extends StatelessWidget {
     );
     final eink = lib.einkMode;
     final scheme = Theme.of(context).colorScheme;
+    final muted = eink ? Colors.black : scheme.onSurfaceVariant;
+    final rowScale = lib.settings.einkRowHeight / 88;
 
-    // (heading, pages) in the order above; pages nobody claimed go last.
     final claimed = {for (final g in _homeGroups) ...g.$2};
     final groups = <(String, List<SettingsCategory>)>[
       for (final g in _homeGroups)
@@ -984,24 +1004,19 @@ class SettingsHome extends StatelessWidget {
       MaterialPageRoute(builder: (_) => SettingsPage(cat.title)),
     );
 
+    // AntennaPod's compact row: a plain icon, a bold title and a short description.
     Widget row(BuildContext c, SettingsCategory cat) => InkWell(
       onTap: () => open(c, cat),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: eink ? 4 : 6),
         child: Row(
           children: [
-            Container(
+            SizedBox(
               width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: eink ? null : scheme.primaryContainer,
-                border: eink ? Border.all(width: 2) : null,
-              ),
               child: Icon(
                 cat.icon,
                 size: 22,
-                color: eink ? Colors.black : scheme.onPrimaryContainer,
+                color: eink ? Colors.black : null,
               ),
             ),
             const SizedBox(width: 16),
@@ -1015,75 +1030,136 @@ class SettingsHome extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 17,
+                      fontSize: 16,
+                      height: 1.2,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   Text(
                     cat.subtitle,
-                    maxLines: 1,
+                    maxLines: eink ? 1 : 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: eink ? Colors.black : scheme.onSurfaceVariant,
-                    ),
+                    style: TextStyle(fontSize: 14, height: 1.2, color: muted),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right),
           ],
         ),
       ),
     );
 
     Widget heading(String t) => Padding(
-      padding: const EdgeInsets.fromLTRB(20, 18, 16, 6),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
       child: Text(
-        t.toUpperCase(),
+        t,
         style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.8,
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
           color: eink ? Colors.black : scheme.primary,
         ),
       ),
     );
 
+    final searchBox = Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      child: SizedBox(
+        height: 44,
+        child: TextField(
+          onChanged: (v) => setState(() => query = v.trim()),
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: 'Search…',
+            prefixIcon: const Icon(Icons.search),
+            filled: true,
+            fillColor: eink ? Colors.white : scheme.surfaceContainerHigh,
+            contentPadding: EdgeInsets.zero,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(24),
+              borderSide: eink ? const BorderSide(width: 2) : BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(24),
+              borderSide: BorderSide(
+                width: 2,
+                color: eink ? Colors.black : scheme.primary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Searching lists the matching settings themselves, working in place, under their page's name.
+    if (query.isNotEmpty) {
+      final q = query.toLowerCase();
+      final flat = <SettingItem>[];
+      for (final c in cats) {
+        final hits = c.items
+            .where(
+              (i) =>
+                  i is! HeaderItem &&
+                  (i.title.toLowerCase().contains(q) ||
+                      i.subtitle.toLowerCase().contains(q)),
+            )
+            .toList();
+        if (hits.isNotEmpty) {
+          flat
+            ..add(HeaderItem(c.title))
+            ..addAll(hits);
+        }
+      }
+      final results = flat.isEmpty
+          ? const Center(child: Text('No settings match'))
+          : (eink
+                ? PagedList<SettingItem>(
+                    items: flat,
+                    itemExtent: 72,
+                    extentOf: (i) => settingExtent(i) * rowScale,
+                    keepWithNext: (i) => i is HeaderItem,
+                    itemBuilder: (c, i) => SettingRow(i, fixed: true),
+                  )
+                : ListView(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    children: [for (final i in flat) SettingRow(i)],
+                  ));
+      return Column(
+        children: [
+          searchBox,
+          Expanded(child: results),
+        ],
+      );
+    }
+
     if (eink) {
-      // Paged, one row each; the group headings are rows too so nothing scrolls.
       final flat = <Object>[
         for (final g in groups) ...[g.$1, ...g.$2],
       ];
-      return PagedList<Object>(
-        items: flat,
-        itemExtent: 80,
-        itemBuilder: (c, i) => i is String
-            ? Align(alignment: Alignment.bottomLeft, child: heading(i))
-            : row(c, i as SettingsCategory),
+      return Column(
+        children: [
+          searchBox,
+          Expanded(
+            child: PagedList<Object>(
+              items: flat,
+              itemExtent: 66,
+              extentOf: (i) => (i is String ? 38.0 : 66.0) * rowScale,
+              keepWithNext: (i) => i is String,
+              itemBuilder: (c, i) => i is String
+                  ? Align(alignment: Alignment.bottomLeft, child: heading(i))
+                  : row(c, i as SettingsCategory),
+            ),
+          ),
+        ],
       );
     }
     return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.only(bottom: 16),
       children: [
-        for (final g in groups) ...[
-          heading(g.$1),
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                for (var i = 0; i < g.$2.length; i++) ...[
-                  if (i > 0) const Divider(height: 1, indent: 72),
-                  row(context, g.$2[i]),
-                ],
-              ],
-            ),
-          ),
+        searchBox,
+        for (var n = 0; n < groups.length; n++) ...[
+          if (n > 0) const Divider(height: 8),
+          heading(groups[n].$1),
+          for (final c in groups[n].$2) row(context, c),
         ],
       ],
     );
@@ -1116,25 +1192,31 @@ class SettingsItems extends StatelessWidget {
       android: Platform.isAndroid,
       updates: context.watch<UpdateController>(),
     ).firstWhere((c) => c.title == categoryTitle);
+    return SettingItemsView(cat.items);
+  }
+}
+
+/// Any list of settings as compact rows: paged on e-ink, scrolling otherwise.
+class SettingItemsView extends StatelessWidget {
+  const SettingItemsView(this.items, {super.key});
+  final List<SettingItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<Library>();
     if (lib.einkMode) {
+      final scale = lib.settings.einkRowHeight / 88;
       return PagedList<SettingItem>(
-        items: cat.items,
-        itemExtent: 96 * lib.settings.einkRowHeight / 88,
+        items: items,
+        itemExtent: 72,
+        extentOf: (i) => settingExtent(i) * scale,
+        keepWithNext: (i) => i is HeaderItem,
         itemBuilder: (c, i) => SettingRow(i, fixed: true),
       );
     }
-    // Thin lines between rows (not around the headings) and room at the bottom.
-    final children = <Widget>[];
-    for (var n = 0; n < cat.items.length; n++) {
-      final item = cat.items[n];
-      if (n > 0 && item is! HeaderItem && cat.items[n - 1] is! HeaderItem) {
-        children.add(const Divider(height: 1, indent: 16, endIndent: 16));
-      }
-      children.add(SettingRow(item));
-    }
     return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
-      children: children,
+      padding: const EdgeInsets.only(bottom: 16),
+      children: [for (final i in items) SettingRow(i)],
     );
   }
 }
@@ -1217,7 +1299,7 @@ class SettingRow extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: 16,
-            vertical: fixed ? 6 : 10,
+            vertical: fixed ? 3 : 6,
           ),
           child: Row(
             children: [
@@ -1232,7 +1314,8 @@ class SettingRow extends StatelessWidget {
                       overflow: fixed ? TextOverflow.ellipsis : null,
                       style: TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w500,
+                        height: 1.2,
+                        fontWeight: FontWeight.w600,
                         color: titleColor,
                       ),
                     ),
@@ -1241,7 +1324,11 @@ class SettingRow extends StatelessWidget {
                         sub,
                         maxLines: fixed ? 2 : null,
                         overflow: fixed ? TextOverflow.ellipsis : null,
-                        style: TextStyle(fontSize: 13, color: muted),
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.2,
+                          color: muted,
+                        ),
                       ),
                   ],
                 ),
@@ -1277,7 +1364,7 @@ class SettingRow extends StatelessWidget {
       case TextItem():
         final v = item.get();
         return tile(
-          value: v.isEmpty ? 'Default' : v,
+          value: v.isEmpty ? item.empty : v,
           onTap: () => _editText(context, item),
         );
       case FolderItem():
@@ -1300,14 +1387,17 @@ class SettingRow extends StatelessWidget {
         );
       case HeaderItem():
         final heading = Padding(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
           child: Text(
-            item.title.toUpperCase(),
+            item.title,
             style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.6,
-              color: muted,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color:
+                  Theme.of(context).brightness == Brightness.light &&
+                      Theme.of(context).colorScheme.primary == Colors.black
+                  ? Colors.black
+                  : Theme.of(context).colorScheme.primary,
             ),
           ),
         );

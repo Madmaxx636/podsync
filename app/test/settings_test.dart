@@ -308,7 +308,20 @@ void main() {
         lib.setEink(true);
         await tester.pumpWidget(app(lib, const Scaffold(body: SettingsHome())));
         await tester.pump();
-        expect(find.byType(Scrollable), findsNothing);
+        // The search box scrolls its own text; nothing else may.
+        final scrolling = find
+            .byType(Scrollable)
+            .evaluate()
+            .where(
+              (e) => find
+                  .ancestor(
+                    of: find.byWidget(e.widget),
+                    matching: find.byType(EditableText),
+                  )
+                  .evaluate()
+                  .isEmpty,
+            );
+        expect(scrolling, isEmpty);
         for (final cat in settingsCategories(
           lib,
           DownloadManager(lib, watchNetwork: false),

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2 - 2026-11-05
+
+- Settings are compact, like AntennaPod's: plain icons, bold titles with a short description, tighter spacing, small headings between groups, and a Search box at the top that finds any setting and lets you change it right there. E-ink pages fit more rows because headings and short rows take less room.
+- Per-podcast filter, sort and settings, as on AntennaPod's podcast page. Under the cover: info, Filter, Sort and Settings. Filter episodes with pairs of choices (Played / Not played, Paused / Not paused, Is favorite / Not favorite, Has media / No media, Queued / Not queued, Downloaded / Not downloaded; Confirm or Reset). Sort by title, duration or date, or follow the global order; tapping again flips the direction. The page says "Filtered" while a filter is on.
+- A new Podcast settings page: custom name and tags; the episode filter and sort order; playback speed and skip intro/ending; Keep updated (leave this podcast out of "refresh all"), episode notifications, delete after playing, new-episodes action and auto-download; feed login; copy the feed address; unsubscribe. Changes apply at once and sync. The desktop has the same page in a window, with Filter and Sort buttons on a podcast's header.
+
 ## 0.5.1 - 2026-11-05
 
 - Settings reorganised: the home screen is grouped under Listening (Playback, Up Next, Downloads), Library (Library and feeds, Podcasts, Sync, Import and backup), Display (Appearance, Interface, E-ink) and About, each page with its own coloured icon; long pages such as Downloads have section headings and thin dividers. E-ink keeps the same layout, black and white and paged.

@@ -503,13 +503,22 @@ class Library extends ChangeNotifier {
     }
   }
 
+  /// "Keep updated" off in the podcast's own settings (AntennaPod stores it as 0).
+  static bool _optedOutOfRefresh(Podcast s) {
+    final v = s.extra['keepUpdated'];
+    return v == false || v == 0;
+  }
+
   Future<void> refreshAll() async {
     await Future.wait(
-      subscriptions.map(
-        (s) => refreshFeed(s.feedUrl).catchError((Object e) {
-          debugPrint('refresh ${s.feedUrl}: $e');
-        }),
-      ),
+      // A podcast can opt out of refreshing everything ("Keep updated" off in its settings).
+      subscriptions
+          .where((s) => !_optedOutOfRefresh(s))
+          .map(
+            (s) => refreshFeed(s.feedUrl).catchError((Object e) {
+              debugPrint('refresh ${s.feedUrl}: $e');
+            }),
+          ),
     );
   }
 
@@ -524,9 +533,13 @@ class Library extends ChangeNotifier {
     int? newEpisodesAction,
     Map<String, Object>? extra,
     List<String>? tags,
+    String? username,
+    String? password,
   }) {
     final pc = podcasts[feedUrl];
     if (pc == null) return;
+    if (username != null) pc.username = username;
+    if (password != null) pc.password = password;
     if (customTitle != null) pc.customTitle = customTitle;
     if (clearSpeed) pc.speed = null;
     if (speed != null) pc.speed = speed;

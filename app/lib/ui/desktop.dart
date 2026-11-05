@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/downloads.dart';
+import '../core/episode_view.dart';
 import '../core/library.dart';
 import '../core/models.dart';
 import '../core/player.dart';
@@ -402,8 +403,7 @@ class _DesktopShellState extends State<DesktopShell> {
           ],
         );
       case _Show(:final feedUrl):
-        final eps = lib
-            .episodesOf(feedUrl)
+        final eps = EpisodeView.of(lib, feedUrl, downloaded: dm.isDownloaded)
             .where(match)
             .where(
               (e) => !lib.settings.hidePlayed || !lib.progressOf(e.id).played,
@@ -424,6 +424,10 @@ class _DesktopShellState extends State<DesktopShell> {
               child: EpisodeTable(
                 key: ValueKey('show:$feedUrl'),
                 episodes: filterEpisodes(_episodeFilter, eps, lib, dm),
+                // This podcast's own sort order wins over the column sort.
+                keepOrder:
+                    lib.podcasts[feedUrl] != null &&
+                    EpisodeView.sortOf(lib.podcasts[feedUrl]!).isNotEmpty,
                 showPodcastColumn: false,
                 onGoToPodcast: goPodcast,
                 onFocusEpisode: focus,
@@ -986,12 +990,27 @@ class _ShowHeaderState extends State<_ShowHeader> {
             ),
           ),
           const SizedBox(width: 12),
-          if (subscribed)
+          if (subscribed) ...[
+            IconButton(
+              tooltip: 'Filter episodes',
+              icon: Icon(
+                p != null && EpisodeView.isFiltered(p)
+                    ? Icons.filter_alt
+                    : Icons.filter_alt_outlined,
+              ),
+              onPressed: () => showEpisodeFilter(context, widget.feedUrl),
+            ),
+            IconButton(
+              tooltip: 'Sort episodes',
+              icon: const Icon(Icons.sort),
+              onPressed: () => showEpisodeSort(context, widget.feedUrl),
+            ),
             IconButton(
               tooltip: 'Podcast settings',
-              icon: const Icon(Icons.tune),
+              icon: const Icon(Icons.settings_outlined),
               onPressed: () => showPodcastSettings(context, widget.feedUrl),
             ),
+          ],
           OutlinedButton(
             onPressed: busy
                 ? null

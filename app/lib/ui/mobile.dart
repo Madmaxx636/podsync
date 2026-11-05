@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/downloads.dart';
 import '../core/library.dart';
+import '../core/episode_view.dart';
 import '../core/models.dart';
 import '../core/player.dart';
 import 'downloads_ui.dart';
@@ -1461,11 +1462,16 @@ class _PodcastScreenState extends State<PodcastScreen> {
   Widget build(BuildContext context) {
     final lib = context.watch<Library>();
     final p = lib.podcasts[widget.feedUrl];
-    final eps = lib
-        .episodesOf(widget.feedUrl)
-        .where((e) => !lib.settings.hidePlayed || !lib.progressOf(e.id).played)
-        .toList();
+    final dmView = context.watch<DownloadManager>();
+    // This podcast's own filter and sort order, then the global "hide played" on top.
+    final eps =
+        EpisodeView.of(lib, widget.feedUrl, downloaded: dmView.isDownloaded)
+            .where(
+              (e) => !lib.settings.hidePlayed || !lib.progressOf(e.id).played,
+            )
+            .toList();
     final subscribed = lib.isSubscribed(widget.feedUrl);
+    final filtered = p != null && EpisodeView.isFiltered(p);
     return Scaffold(
       appBar: AppBar(
         title: Text(p?.displayTitle ?? 'Podcast'),
@@ -1537,12 +1543,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
               ),
             ],
           ),
-          if (subscribed)
-            IconButton(
-              tooltip: 'Podcast settings',
-              icon: const Icon(Icons.tune),
-              onPressed: () => showPodcastSettings(context, widget.feedUrl),
-            ),
         ],
       ),
       body: SafeArea(
@@ -1567,6 +1567,66 @@ class _PodcastScreenState extends State<PodcastScreen> {
                 ],
               ),
             ),
+            if (subscribed && p != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'About this podcast',
+                      icon: const Icon(Icons.info_outline),
+                      onPressed: () => showDialog<void>(
+                        context: context,
+                        builder: (c) => AlertDialog(
+                          title: Text(p.displayTitle),
+                          content: SingleChildScrollView(
+                            child: Text(
+                              p.description.isEmpty
+                                  ? 'No description.'
+                                  : p.description,
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(c),
+                              child: const Text('Close'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Filter episodes',
+                      icon: Icon(
+                        filtered ? Icons.filter_alt : Icons.filter_alt_outlined,
+                      ),
+                      onPressed: () =>
+                          showEpisodeFilter(context, widget.feedUrl),
+                    ),
+                    IconButton(
+                      tooltip: 'Sort episodes',
+                      icon: const Icon(Icons.sort),
+                      onPressed: () => showEpisodeSort(context, widget.feedUrl),
+                    ),
+                    IconButton(
+                      tooltip: 'Podcast settings',
+                      icon: const Icon(Icons.settings_outlined),
+                      onPressed: () =>
+                          showPodcastSettings(context, widget.feedUrl),
+                    ),
+                  ],
+                ),
+              ),
+            if (filtered)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 2),
+                child: Center(
+                  child: Text(
+                    'Filtered',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
             Expanded(
               child: adaptiveList(
                 context,

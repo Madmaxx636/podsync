@@ -54,7 +54,7 @@ void main() {
 
   testWidgets('the settings home is grouped under headings', (tester) async {
     await pumpPage(tester, Library(), const Scaffold(body: SettingsHome()));
-    for (final h in ['LISTENING', 'LIBRARY', 'DISPLAY']) {
+    for (final h in ['Listening', 'Library', 'Display']) {
       expect(find.text(h), findsOneWidget, reason: h);
     }
     expect(find.text('Playback'), findsOneWidget);

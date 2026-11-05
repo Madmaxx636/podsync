@@ -191,7 +191,17 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Get Info'));
       await tester.pumpAndSettle();
-      expect(find.text('Download new episodes'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Include in auto downloads'),
+        100,
+        scrollable: find
+            .descendant(
+              of: find.byType(Dialog),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(find.text('Include in auto downloads'), findsOneWidget);
       expect(find.text('Delete after playing'), findsOneWidget);
       // The fixture podcast had AntennaPod's per-feed auto-download switched off: imported as "Never".
       expect(
@@ -200,11 +210,10 @@ void main() {
       );
       expect(find.text('Never'), findsOneWidget);
 
+      // Changes apply at once; there is no Save button any more.
       await tester.tap(find.text('Never'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Always').last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
       expect(
         rig.lib.podcasts['http://a.test/feed.xml']!.extra['autoDownloadNew'],
