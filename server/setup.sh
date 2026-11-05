@@ -24,12 +24,12 @@ yesno() { # question default(y|n)  -> 0 for yes
   fi
 }
 ask() { # question default -> echoes the answer
-  if [ $UI = whiptail ]; then whiptail --title "$TITLE" --inputbox "$1" 12 74 "${2:-}" 3>&1 1>&2 2>&3 || exit 1
-  else local a; read -r -p "$1 [${2:-}] " a || exit 1; echo "${a:-${2:-}}"; fi
+  if [ $UI = whiptail ]; then whiptail --title "$TITLE" --inputbox "$1" 22 74 "${2:-}" 3>&1 1>&2 2>&3 || exit 1
+  else local a; printf '\n%b\n' "$1" >&2; read -r -p "> [${2:-}] " a || exit 1; echo "${a:-${2:-}}"; fi
 }
 secret() { # question -> echoes the answer
-  if [ $UI = whiptail ]; then whiptail --title "$TITLE" --passwordbox "$1" 12 74 3>&1 1>&2 2>&3 || exit 1
-  else local a; read -r -s -p "$1: " a || exit 1; echo >&2; echo "$a"; fi
+  if [ $UI = whiptail ]; then whiptail --title "$TITLE" --passwordbox "$1" 20 74 3>&1 1>&2 2>&3 || exit 1
+  else local a; printf '\n%b\n' "$1" >&2; read -r -s -p "> " a || exit 1; echo >&2; echo "$a"; fi
 }
 choose() { # question tag1 text1 tag2 text2 ... -> echoes the tag
   local q="$1"; shift
@@ -72,7 +72,7 @@ MODE=$(choose "How will you use the server?" \
   home "At home only (simplest, plain http on your network)" \
   duckdns "Also away from home, with my DuckDNS name (https)")
 PORT=8080
-if [ $MODE = home ]; then PORT=$(ask "Port to listen on" "8080"); fi
+if [ $MODE = home ]; then PORT=$(ask "PORT NUMBER\n\nThe server will be at http://THIS-MACHINE:PORT. Press Enter to keep 8080 unless something else already uses it." "8080"); fi
 
 DOMAIN=""; TOKEN=""; EMAIL=""
 if [ $MODE = duckdns ]; then
@@ -83,9 +83,19 @@ if [ $MODE = duckdns ]; then
 
 The name will point at your home connection and the server will be reachable by anyone who knows it, so sign-ups get switched off at the end."
   while :; do
-    DOMAIN=$(ask "Your DuckDNS name (just the first part, e.g. myname)" "$DOMAIN")
-    DOMAIN="$(echo "$DOMAIN" | tr -d '[:space:]')"; DOMAIN="${DOMAIN%.duckdns.org}"
-    TOKEN=$(secret "Your DuckDNS token (the long code at the top of duckdns.org when you are logged in)")
+    DOMAIN=$(ask "DUCKDNS NAME
+
+Type only the first part of your DuckDNS address.
+  Address:  https://myserver.duckdns.org
+  You type: myserver
+
+(No https://, no .duckdns.org. If you paste the whole address I will cut it down for you.)" "$DOMAIN")
+    DOMAIN="$(echo "$DOMAIN" | tr -d '[:space:]')"
+    DOMAIN="${DOMAIN#http://}"; DOMAIN="${DOMAIN#https://}"; DOMAIN="${DOMAIN%%/*}"; DOMAIN="${DOMAIN%.duckdns.org}"
+    TOKEN=$(secret "DUCKDNS TOKEN
+
+The long code (looks like 1a2b3c4d-1234-...) shown at the top of duckdns.org when you are logged in, next to the word 'token'.
+It is hidden while you type.")
     TOKEN="$(echo "$TOKEN" | tr -d '[:space:]')"
     if [ -z "$DOMAIN" ] || [ -z "$TOKEN" ]; then msg "Both the name and the token are needed."; continue; fi
     # Check it right away; this also points the name at this connection, which is the goal.
@@ -100,15 +110,22 @@ The name will point at your home connection and the server will be reachable by 
 
 Let's try again."
   done
-  EMAIL=$(ask "Email for the HTTPS certificate (Let's Encrypt only uses it for expiry warnings)" "")
-  [ -n "$EMAIL" ] || die "No email given."
+  while :; do
+    EMAIL=$(ask "YOUR EMAIL ADDRESS (not the website address)
+
+Type an email you read, like you@example.com.
+It is only given to Let's Encrypt, the free service that issues the HTTPS padlock certificate. They use it to warn you if the certificate ever fails to renew. It is not an account and nobody else sees it." "")
+    EMAIL="$(echo "$EMAIL" | tr -d '[:space:]')"
+    if [[ "$EMAIL" =~ ^[^@/:]+@[^@/:]+\.[^@/:]+$ ]]; then break; fi
+    msg "\"$EMAIL\" is not an email address. It needs to look like you@example.com (an @ and no https://)."
+  done
 fi
 
 # ---- 3. account and options -------------------------------------------------------------------
-USERNAME=$(ask "Username for your account (3 to 32 letters, numbers, dots, dashes, underscores)" "$USER")
+USERNAME=$(ask "YOUR PODSYNC USERNAME\n\nThis is what you will type in the app to sign in. 3 to 32 characters: letters, numbers, dots, dashes or underscores. No spaces." "$USER")
 while :; do
-  PASS=$(secret "Password for $USERNAME (8 to 72 characters)")
-  PASS2=$(secret "Same password again")
+  PASS=$(secret "PASSWORD for $USERNAME\n\nChoose one now (8 to 72 characters). You will type it in the app. It is hidden while you type.")
+  PASS2=$(secret "PASSWORD AGAIN\n\nType the same password once more to be sure.")
   if [ "$PASS" != "$PASS2" ]; then msg "The passwords did not match. Try again."; continue; fi
   if [ ${#PASS} -lt 8 ] || [ ${#PASS} -gt 72 ]; then msg "Passwords are 8 to 72 characters."; continue; fi
   break
