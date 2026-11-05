@@ -141,11 +141,12 @@ ${boxes:+
 Docker containers publishing them:
 $boxes
 }
-This is usually the old gPodder server or the web server in front of it. Stop it first, for example:
-  ./scripts/kill-gpodder.sh        (removes gPodder)
-  sudo systemctl disable --now nginx (or apache2)
+Something else (probably a reverse proxy such as Caddy or nginx, which may serve your other apps) already owns them.
+You have two choices:
+  1. Keep it, choose 'At home only' in this wizard with a free port (like 8095), and add PodSync to that proxy yourself.
+  2. Stop it (only if nothing else needs it), then run ./setup.sh again.
 
-Then run ./setup.sh again. Nothing has been changed yet."
+Nothing has been changed yet."
     exit 1
   fi
 fi

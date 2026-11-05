@@ -4,18 +4,20 @@
 #   ./scripts/kill-gpodder.sh --yes      no question (you have been warned)
 #   ./scripts/kill-gpodder.sh --dry-run  only show the plan
 #   ./scripts/kill-gpodder.sh --name X   also treat container X as gPodder
+#   ./scripts/kill-gpodder.sh --free-ports  ALSO stop whatever holds ports 80/443 (a reverse proxy
+#                                         that may serve your other apps: off by default)
 #
 # It backs up the data first (always, to ~/gpodder-backup-DATE), then:
 #   - removes every container, volume and image that looks like gPodder (other containers in the
 #     same compose project are left alone)
-#   - stops (does not delete) containers and services that hold ports 80 and 443
+#   - with --free-ports only: stops (does not delete) containers and services that hold ports 80/443
 #   - disables gPodder systemd services
 set -uo pipefail
-YES=0; DRY=0; EXTRA=()
+YES=0; DRY=0; FREE=0; EXTRA=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --yes) YES=1;; --dry-run) DRY=1;; --name) EXTRA+=("${2:?container name}"); shift;;
-    *) echo "usage: $0 [--yes] [--dry-run] [--name CONTAINER]"; exit 1;;
+    --yes) YES=1;; --dry-run) DRY=1;; --free-ports) FREE=1;; --name) EXTRA+=("${2:?container name}"); shift;;
+    *) echo "usage: $0 [--yes] [--dry-run] [--free-ports] [--name CONTAINER]"; exit 1;;
   esac; shift
 done
 PAT='gpodder|mygpo|opodsync|gpodder2go|nextcloud-gpodder'
@@ -45,7 +47,7 @@ if have docker; then
   done
 
   # containers that publish port 80 or 443 (reverse proxies and the like) are stopped, not deleted
-  while read -r name ports; do
+  while [ $FREE = 1 ] && read -r name ports; do
     [[ "$name" =~ ^podsync$|^server-caddy|^podsync-caddy ]] && continue
     [[ " ${kill_c[*]:-} " == *" $name "* ]] && continue
     [[ "$ports" =~ (:80->|:443->) ]] && stop_c+=("$name")
@@ -53,9 +55,11 @@ if have docker; then
 fi
 if have systemctl; then
   while read -r u _; do [[ "$u" =~ $PAT ]] && units+=("$u"); done < <(systemctl list-unit-files --type=service --no-legend 2>/dev/null)
-  for u in nginx.service apache2.service httpd.service caddy.service lighttpd.service; do
-    systemctl is-active --quiet "$u" 2>/dev/null && stop_units+=("$u")
-  done
+  if [ $FREE = 1 ]; then
+    for u in nginx.service apache2.service httpd.service caddy.service lighttpd.service; do
+      systemctl is-active --quiet "$u" 2>/dev/null && stop_units+=("$u")
+    done
+  fi
 fi
 # whatever else still listens on 80/443 (plain processes): shown, never killed
 others=$(ss -ltnpH 2>/dev/null | awk '$4 ~ /:(80|443)$/ {print $4"  "$NF}' | sort -u)
@@ -84,7 +88,7 @@ for b in "${binds[@]}"; do say "KEEP  folder       $b   (backed up, left on disk
 for u in "${units[@]}"; do say "DISABLE service    $u"; done
 for c in "${stop_c[@]}"; do say "STOP   container   $c   (holds port 80/443; stopped, not deleted)"; done
 for u in "${stop_units[@]}"; do say "STOP   service     $u   (holds port 80/443; stopped and disabled)"; done
-[ -n "$others" ] && { say ""; say "Not touched (plain programs on 80/443, stop these yourself if they are in the way):"; say "$others"; }
+[ -n "$others" ] && { say ""; say "Left running (they hold ports 80/443; they may serve your other apps):"; say "$others"; say "Add --free-ports only if you really want those stopped."; }
 say ""
 say "A backup of the data goes to ~/gpodder-backup-<date> first."
 say "Make sure you already moved your data into PodSync."
