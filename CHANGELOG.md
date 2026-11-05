@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-11-05
 
 - Phone redesign after AntennaPod, one look for both kinds of screen. Colour phones get the bottom bar (Queue, Episodes, Podcasts, Add, More) with counts; e-ink gets browser-style tabs along the top (the selected tab is outlined and open at the bottom), black and white, no animation, paged. Both share the big screen titles, the episode rows (date, size, bold title, time or progress with elapsed and remaining, big round play button), the mini player with a progress line along its top edge, and the player (collapse arrow, favourite, sleep timer, menu, cover, podcast and date, title, Shownotes button, seek bar, speed, rewind, round play button, forward, next).
 - E-ink buttons and chips are square-cornered instead of pills.
