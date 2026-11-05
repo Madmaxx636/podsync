@@ -127,6 +127,10 @@ ThemeData _einkTheme() {
       shape: Border(bottom: BorderSide(width: 2)),
     ),
     dividerTheme: const DividerThemeData(color: Colors.black, thickness: 1),
+    chipTheme: ChipThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      side: const BorderSide(width: 2),
+    ),
     textTheme: Typography.blackMountainView.apply(
       bodyColor: Colors.black,
       displayColor: Colors.black,
@@ -135,6 +139,7 @@ ThemeData _einkTheme() {
       style: TextButton.styleFrom(
         foregroundColor: Colors.black,
         minimumSize: const Size(64, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -142,6 +147,7 @@ ThemeData _einkTheme() {
         foregroundColor: Colors.black,
         side: const BorderSide(width: 2),
         minimumSize: const Size(64, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -149,6 +155,7 @@ ThemeData _einkTheme() {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         minimumSize: const Size(64, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       ),
     ),
     iconButtonTheme: IconButtonThemeData(

@@ -199,65 +199,130 @@ class _EinkTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget tab(String label, bool selected, {VoidCallback? onTap}) => Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          height: 52,
-          alignment: Alignment.center,
-          color: selected ? Colors.black : null,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: selected ? Colors.white : Colors.black,
-            ),
+    // Browser-style tabs: the selected one is outlined with rounded top corners and open at the
+    // bottom, so it joins the line that runs under the whole row.
+    final lib = context.read<Library>();
+    final inMore = _more.contains(section);
+
+    Widget tab(
+      String label,
+      bool selected, {
+      required VoidCallback onTap,
+      String? tooltip,
+    }) {
+      final box = Container(
+        height: 50,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : null,
+          border: selected
+              ? const Border(
+                  top: BorderSide(width: 2),
+                  left: BorderSide(width: 2),
+                  right: BorderSide(width: 2),
+                )
+              : null,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: selected ? FontWeight.w900 : FontWeight.bold,
+            color: Colors.black,
           ),
         ),
-      ),
-    );
+      );
+      return Expanded(
+        // Reacts on touch-down; waiting for the finger to lift feels slow on e-ink.
+        child: Listener(
+          onPointerDown: (_) => onTap(),
+          behavior: HitTestBehavior.opaque,
+          child: tooltip == null ? box : Tooltip(message: tooltip, child: box),
+        ),
+      );
+    }
 
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(width: 2)),
-      ),
-      child: Row(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+      child: Stack(
         children: [
-          for (final s in _main)
-            tab(
-              s == _Section.podcasts
-                  ? 'Podcasts'
-                  : (s == _Section.add ? 'Add' : _titles[s]!),
-              s == section,
-              onTap: () => onSelect(s),
-            ),
-          // Downloads, Statistics and Settings live under one tab so the row stays readable.
-          Expanded(
-            child: PopupMenuButton<_Section>(
-              tooltip: 'More sections',
-              onSelected: onSelect,
-              itemBuilder: (c) => [
-                for (final s in _more)
-                  if (!_hidden(context.read<Library>(), s))
-                    PopupMenuItem(value: s, child: Text(_titles[s]!)),
-              ],
-              child: Container(
-                height: 52,
-                alignment: Alignment.center,
-                color: _more.contains(section) ? Colors.black : null,
-                child: Text(
-                  _more.contains(section) ? _titles[section]! : 'More',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: _more.contains(section)
-                        ? Colors.white
-                        : Colors.black,
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SizedBox(height: 2, child: ColoredBox(color: Colors.black)),
+          ),
+          Row(
+            children: [
+              for (final s in _main)
+                tab(
+                  s == _Section.podcasts
+                      ? 'Podcasts'
+                      : (s == _Section.add ? 'Add' : _titles[s]!),
+                  s == section,
+                  onTap: () => onSelect(s),
+                ),
+              // Downloads, Statistics and Settings live under one tab so the row stays readable.
+              Expanded(
+                child: Builder(
+                  builder: (ctx) => Listener(
+                    behavior: HitTestBehavior.opaque,
+                    onPointerDown: (_) async {
+                      final box = ctx.findRenderObject() as RenderBox;
+                      final origin = box.localToGlobal(Offset.zero);
+                      final picked = await showMenu<_Section>(
+                        context: ctx,
+                        position: RelativeRect.fromLTRB(
+                          origin.dx,
+                          origin.dy + box.size.height,
+                          origin.dx + box.size.width,
+                          0,
+                        ),
+                        items: [
+                          for (final s in _more)
+                            if (!_hidden(lib, s))
+                              PopupMenuItem(value: s, child: Text(_titles[s]!)),
+                        ],
+                      );
+                      if (picked != null) onSelect(picked);
+                    },
+                    child: Tooltip(
+                      message: 'More sections',
+                      child: Container(
+                        height: 50,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: inMore ? Colors.white : null,
+                          border: inMore
+                              ? const Border(
+                                  top: BorderSide(width: 2),
+                                  left: BorderSide(width: 2),
+                                  right: BorderSide(width: 2),
+                                )
+                              : null,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(14),
+                          ),
+                        ),
+                        child: Text(
+                          inMore ? _titles[section]! : 'More',
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: inMore
+                                ? FontWeight.w900
+                                : FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
         ],
       ),
@@ -793,16 +858,29 @@ class EpisodeTile extends StatelessWidget {
             // On e-ink the row is too narrow for this; the "Downloaded" note and the menu cover it.
             if (!eink && lib.settings.uiRowDownloadIcon)
               DownloadIcon(e, size: 22),
-            IconButton(
-              iconSize: 36,
-              tooltip: isPlaying ? 'Pause' : 'Play',
-              icon: Icon(
-                isPlaying
-                    ? Icons.pause_circle_outline
-                    : Icons.play_circle_outline,
+            if (eink)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: SizedBox(
+                  width: 84,
+                  child: EinkButton(
+                    isPlaying ? 'Pause' : 'Play',
+                    height: 44,
+                    onTap: () => isCurrent ? player.toggle() : player.play(e),
+                  ),
+                ),
+              )
+            else
+              IconButton(
+                iconSize: 36,
+                tooltip: isPlaying ? 'Pause' : 'Play',
+                icon: Icon(
+                  isPlaying
+                      ? Icons.pause_circle_outline
+                      : Icons.play_circle_outline,
+                ),
+                onPressed: () => isCurrent ? player.toggle() : player.play(e),
               ),
-              onPressed: () => isCurrent ? player.toggle() : player.play(e),
-            ),
             // E-ink has no comfortable long-press, so show the menu button outright.
             if (eink)
               IconButton(
@@ -1547,44 +1625,121 @@ class PlayerScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  SizedBox(width: 56, child: Center(child: speedButton)),
-                  IconButton(
-                    iconSize: 40,
-                    tooltip: 'Back ${lib.skipBackSec}s',
-                    icon: const Icon(Icons.replay_10),
-                    onPressed: player.skipBack,
-                  ),
-                  IconButton.filled(
-                    iconSize: 44,
-                    padding: const EdgeInsets.all(14),
-                    // The e-ink theme paints every icon button black, which would hide the icon here.
-                    style: IconButton.styleFrom(
-                      foregroundColor: scheme.onPrimary,
+            if (eink)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: EinkButton(
+                            'Back ${lib.skipBackSec}',
+                            icon: Icons.replay,
+                            onTap: player.skipBack,
+                            height: 56,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: EinkButton(
+                            player.playing ? 'Pause' : 'Play',
+                            icon: player.playing
+                                ? Icons.pause
+                                : Icons.play_arrow,
+                            selected: true,
+                            onTap: player.toggle,
+                            height: 56,
+                            fontSize: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: EinkButton(
+                            'Fwd ${lib.skipForwardSec}',
+                            icon: Icons.forward_30,
+                            onTap: player.skipForward,
+                            height: 56,
+                          ),
+                        ),
+                      ],
                     ),
-                    tooltip: player.playing ? 'Pause' : 'Play',
-                    icon: Icon(player.playing ? Icons.pause : Icons.play_arrow),
-                    onPressed: player.toggle,
-                  ),
-                  IconButton(
-                    iconSize: 40,
-                    tooltip: 'Forward ${lib.skipForwardSec}s',
-                    icon: const Icon(Icons.forward_30),
-                    onPressed: player.skipForward,
-                  ),
-                  IconButton(
-                    iconSize: 40,
-                    tooltip: 'Next in queue',
-                    icon: const Icon(Icons.skip_next),
-                    onPressed: player.next,
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        if (lib.settings.uiPlayerSpeed) ...[
+                          Expanded(
+                            child: EinkButton(
+                              'Speed ${speed.toStringAsFixed(1)}x',
+                              height: 48,
+                              onTap: () {
+                                const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
+                                final i = speeds.indexWhere(
+                                  (s) => (s - speed).abs() < 0.01,
+                                );
+                                player.setSpeed(
+                                  speeds[(i + 1) % speeds.length],
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Expanded(
+                          child: EinkButton(
+                            'Next',
+                            icon: Icons.skip_next,
+                            onTap: player.next,
+                            height: 48,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(width: 56, child: Center(child: speedButton)),
+                    IconButton(
+                      iconSize: 40,
+                      tooltip: 'Back ${lib.skipBackSec}s',
+                      icon: const Icon(Icons.replay_10),
+                      onPressed: player.skipBack,
+                    ),
+                    IconButton.filled(
+                      iconSize: 44,
+                      padding: const EdgeInsets.all(14),
+                      // The e-ink theme paints every icon button black, which would hide the icon here.
+                      style: IconButton.styleFrom(
+                        foregroundColor: scheme.onPrimary,
+                      ),
+                      tooltip: player.playing ? 'Pause' : 'Play',
+                      icon: Icon(
+                        player.playing ? Icons.pause : Icons.play_arrow,
+                      ),
+                      onPressed: player.toggle,
+                    ),
+                    IconButton(
+                      iconSize: 40,
+                      tooltip: 'Forward ${lib.skipForwardSec}s',
+                      icon: const Icon(Icons.forward_30),
+                      onPressed: player.skipForward,
+                    ),
+                    IconButton(
+                      iconSize: 40,
+                      tooltip: 'Next in queue',
+                      icon: const Icon(Icons.skip_next),
+                      onPressed: player.next,
+                    ),
+                  ],
+                ),
               ),
-            ),
             if (lib.settings.uiPlayerVolume)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 24, 0),

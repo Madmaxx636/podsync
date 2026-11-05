@@ -278,3 +278,67 @@ class _InstantIconButtonState extends State<InstantIconButton> {
     );
   }
 }
+
+/// A plain bordered button for e-ink: square corners, a solid black outline, and the selected one
+/// inverted. Separate boxes with space between them are easier to hit and read than icons in circles.
+class EinkButton extends StatelessWidget {
+  const EinkButton(
+    this.label, {
+    super.key,
+    required this.onTap,
+    this.selected = false,
+    this.icon,
+    this.height = 48,
+    this.fontSize = 16,
+    this.shrink = true,
+  });
+  final String label;
+  final VoidCallback? onTap;
+  final bool selected;
+  final IconData? icon;
+  final double height;
+  final double fontSize;
+
+  /// Scale the text down to fit (buttons with long labels); tabs turn it off so they all match.
+  final bool shrink;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = selected ? Colors.white : Colors.black;
+    return Listener(
+      // Reacts on touch-down; waiting for the finger to lift feels slow on e-ink.
+      onPointerDown: (_) => onTap?.call(),
+      child: Container(
+        height: height,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: selected ? Colors.black : Colors.white,
+          border: Border.all(width: 2, color: Colors.black),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: FittedBox(
+          fit: shrink ? BoxFit.scaleDown : BoxFit.none,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: fontSize + 4, color: fg),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.bold,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
