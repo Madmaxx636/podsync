@@ -1,10 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:provider/provider.dart';
 
+import 'core/audio_handler.dart';
 import 'core/desktop_integration.dart';
 import 'core/directory.dart';
 import 'core/downloads.dart';
@@ -18,13 +19,7 @@ import 'ui/update_ui.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (Platform.isAndroid) {
-    await JustAudioBackground.init(
-      androidNotificationChannelId: 'dev.podsync.playback',
-      androidNotificationChannelName: 'Playback',
-      androidNotificationOngoing: true,
-    );
-  } else {
+  if (!Platform.isAndroid) {
     JustAudioMediaKit.ensureInitialized(linux: true, windows: true);
   }
 
@@ -36,6 +31,25 @@ Future<void> main(List<String> args) async {
   final store = StoreController(StoreDirectory(), library);
   final updates = UpdateController(library);
   library.startBackground();
+  // Android: the notification, lock screen and headset buttons.
+  if (Platform.isAndroid) {
+    await AudioService.init(
+      builder: () => PodSyncAudioHandler(player, library),
+      config: AudioServiceConfig(
+        androidNotificationChannelId: 'dev.podsync.playback',
+        androidNotificationChannelName: 'Playback',
+        androidNotificationChannelDescription:
+            'Controls for the episode that is playing',
+        androidNotificationIcon: 'drawable/ic_stat_podsync',
+        androidShowNotificationBadge: false,
+        androidNotificationOngoing: true,
+        fastForwardInterval: const Duration(seconds: 30),
+        rewindInterval: const Duration(seconds: 10),
+        artDownscaleWidth: 512,
+        artDownscaleHeight: 512,
+      ),
+    );
+  }
   // Windows and Linux: tray icon, close to tray, start at login, media keys.
   if (DesktopIntegration.supported) {
     await DesktopIntegration.prepareWindow(library, args);

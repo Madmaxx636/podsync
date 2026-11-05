@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 
 import 'downloads.dart';
 import 'library.dart';
@@ -45,6 +44,9 @@ class PlayerController extends ChangeNotifier {
     library.addListener(_onLibrary);
     _player.playerStateStream.listen((s) {
       playing = s.playing;
+      buffering =
+          s.processingState == ProcessingState.loading ||
+          s.processingState == ProcessingState.buffering;
       if (s.processingState == ProcessingState.completed) _onCompleted();
       notifyListeners();
     });
@@ -58,6 +60,9 @@ class PlayerController extends ChangeNotifier {
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
   bool playing = false;
+
+  /// True while the player is loading or buffering (the notification shows a spinner).
+  bool buffering = false;
   String? error;
   bool _endHandled = false;
   bool _markedPlayedEarly = false;
@@ -86,19 +91,13 @@ class PlayerController extends ChangeNotifier {
     duration = Duration(milliseconds: e.durationMs);
     notifyListeners();
     try {
-      final tag = MediaItem(
-        id: e.id,
-        title: e.title,
-        artist: podcast?.displayTitle ?? '',
-        artUri: e.imageUrl.isEmpty ? null : Uri.tryParse(e.imageUrl),
-      );
       // Prefer the downloaded copy; if it will not open, fall back to streaming.
       final local = downloads?.pathOf(e.id);
       var started = false;
       if (local != null) {
         try {
           await _player.setAudioSource(
-            AudioSource.file(local, tag: tag),
+            AudioSource.file(local),
             initialPosition: position,
           );
           started = true;
@@ -110,7 +109,7 @@ class PlayerController extends ChangeNotifier {
       }
       if (!started) {
         await _player.setAudioSource(
-          AudioSource.uri(Uri.parse(e.audioUrl), tag: tag),
+          AudioSource.uri(Uri.parse(e.audioUrl)),
           initialPosition: position,
         );
       }
@@ -124,6 +123,20 @@ class PlayerController extends ChangeNotifier {
       error = 'Could not play this episode: $err';
       notifyListeners();
     }
+  }
+
+  /// Play button pressed with nothing loaded (notification, widget, headset after the app was
+  /// closed): resume what is loaded, else start the first episode of Up Next, else the last one
+  /// that was being listened to.
+  Future<void> playFromAnywhere() async {
+    if (current != null) {
+      if (!playing) await toggle();
+      return;
+    }
+    final queued = library.queueEpisodes;
+    if (queued.isNotEmpty) return play(queued.first, fromQueue: true);
+    final recent = library.historyEpisodes;
+    if (recent.isNotEmpty) await play(recent.first);
   }
 
   Future<void> toggle() async {
