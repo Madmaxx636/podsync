@@ -6,7 +6,18 @@ server; each person only ever sees their own data.
 
 One file to back up, one container to run, nothing else to install.
 
-## Quickest way: the scripts
+## Quickest way: the setup wizard
+
+```bash
+cd server
+./setup.sh
+```
+
+A few screens (whiptail dialogs, or plain questions if those are missing): checks Docker and offers to install it, asks whether you only use it at home or also away with a DuckDNS name, then starts the server, creates your account, closes sign-up if you want, and schedules nightly backups. With DuckDNS it also points the name at your connection, keeps it updated every 5 minutes, and puts Caddy in front for HTTPS (you still forward TCP 80 and 443 on your router).
+
+To remove an old gPodder server from the same machine afterwards: `./scripts/remove-gpodder.sh` (add `--dry-run` to see what it would do). It finds the container or service, offers a backup, and deletes only after you type DELETE.
+
+## The scripts it uses
 
 Everything below is wrapped in scripts in `scripts/`; run them from the `server` folder.
 
@@ -20,6 +31,7 @@ Everything below is wrapped in scripts in `scripts/`; run them from the `server`
 | `./scripts/update.sh` | Backup, `git pull`, rebuild |
 | `./scripts/https.sh DOMAIN EMAIL` | Add Caddy for HTTPS with an automatic certificate |
 | `./scripts/duckdns.sh` | Keep a DuckDNS name pointed at your network (`--cron` every 5 minutes) |
+| `./scripts/remove-gpodder.sh` | Back up, stop and delete a gPodder server on this machine |
 
 Set `PODSYNC_PORT=9090` before `install.sh` to use another port.
 

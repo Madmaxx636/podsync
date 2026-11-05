@@ -32,6 +32,7 @@ $domain {
     reverse_proxy podsync:8080
 }
 EOF
-docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+# Every later `docker compose` command in this folder now includes the HTTPS part automatically.
+{ grep -v '^COMPOSE_FILE=' .env 2>/dev/null || true; echo "COMPOSE_FILE=docker-compose.yml:docker-compose.https.yml"; } > .env.new && mv .env.new .env
+docker compose up -d
 echo "Give it a minute for the certificate, then use https://$domain in the app."
-echo "From now on start it with: docker compose -f docker-compose.yml -f docker-compose.https.yml up -d"

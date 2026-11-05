@@ -17,3 +17,8 @@ PodSync-Setup-x64.exe
 .signing/
 
 PodSync-android.apk
+server/.env
+server/backups/
+server/scripts/duckdns.env
+server/docker-compose.https.yml
+server/Caddyfile
