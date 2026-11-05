@@ -56,7 +56,7 @@ if [ -z "$HOST" ]; then
   read -r -p "Address for PodSync (no https://): " HOST
 fi
 HOST="${HOST#http://}"; HOST="${HOST#https://}"; HOST="${HOST%%/*}"; HOST="$(echo "$HOST" | tr -d '[:space:]')"
-[[ "$HOST" == *.* ]] || HOST="$HOST.duckdns.org"      # "mcpodsync" means mcpodsync.duckdns.org
+[[ "$HOST" == *.* ]] || HOST="$HOST.duckdns.org"      # "myname" means myname.duckdns.org
 [[ "$HOST" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$ ]] || die "\"$HOST\" is not a valid address like podsync.myname.duckdns.org"
 REPLACE=0
 if grep -qF "$HOST" "$cfg_host"; then
