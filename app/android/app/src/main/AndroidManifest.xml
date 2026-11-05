@@ -51,6 +51,20 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/update_paths" />
         </provider>
+        <!-- Home-screen widgets -->
+        <receiver android:name=".NowPlayingWidget" android:exported="false" android:label="@string/widget_now_playing_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_now_playing_info" />
+        </receiver>
+        <receiver android:name=".UpNextWidget" android:exported="false" android:label="@string/widget_up_next_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_up_next_info" />
+        </receiver>
+        <receiver android:name=".PlayPauseWidget" android:exported="false" android:label="@string/widget_play_pause_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_play_pause_info" />
+        </receiver>
+        <receiver android:name=".WidgetActionReceiver" android:exported="false" />
         <service android:name="com.ryanheise.audioservice.AudioService"
             android:foregroundServiceType="mediaPlayback"
             android:exported="true" tools:ignore="Instantiatable">

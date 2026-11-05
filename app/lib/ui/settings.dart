@@ -10,6 +10,7 @@ import '../core/desktop_integration.dart';
 import '../core/downloads.dart';
 import '../core/library.dart';
 import '../core/updater.dart';
+import '../core/widget_bridge.dart';
 import 'account.dart';
 import 'common.dart';
 import 'download_folder.dart';
@@ -209,6 +210,35 @@ List<SettingsCategory> settingsCategories(
       ],
     ),
     SettingsCategory('Interface', 'Choose what is shown', Icons.tune, [
+      if (android) ...[
+        const HeaderItem('Home screen widgets'),
+        for (final (kind, name, about) in const [
+          (
+            'now',
+            'Now playing',
+            'Cover, title and rewind, play, fast-forward and next',
+          ),
+          (
+            'upnext',
+            'Up Next',
+            'The next episodes in your queue; tap one to play it',
+          ),
+          (
+            'playpause',
+            'Play / pause',
+            'One big button, with the title beside it',
+          ),
+        ])
+          ActionItem('Add the $name widget', about, (c) async {
+            final placed = await WidgetBridge.pin(kind);
+            if (!placed && c.mounted) {
+              showSnack(
+                c,
+                'Your launcher cannot add it from here. Long-press the home screen, choose Widgets and look for PodSync.',
+              );
+            }
+          }),
+      ],
       const HeaderItem('Start-up'),
       choice<String>(
         'startScreen',

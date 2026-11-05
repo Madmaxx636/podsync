@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="horizontal"
+    android:padding="12dp"
+    android:gravity="center_vertical">
+
+    <ImageView
+        android:id="@+id/art"
+        android:layout_width="88dp"
+        android:layout_height="88dp"
+        android:scaleType="centerCrop"
+        android:src="@drawable/ic_widget_logo" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="match_parent"
+            tools:text="Episode title goes here"
+            android:layout_height="wrap_content"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:textColor="@color/widget_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/podcast"
+            android:layout_width="match_parent"
+            tools:text="Podcast name"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="@color/widget_muted"
+            android:textSize="13sp" />
+
+        <ProgressBar
+            android:id="@+id/progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="6dp"
+            android:max="1000"
+            android:progressTint="@color/widget_accent"
+            android:progressBackgroundTint="@color/widget_track" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:orientation="horizontal"
+            android:gravity="center">
+
+            <ImageButton
+                android:id="@+id/rewind"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:background="@null"
+                android:contentDescription="Rewind"
+                android:src="@drawable/ic_widget_rewind" />
+
+            <ImageButton
+                android:id="@+id/play_pause"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/widget_play_bg"
+                android:contentDescription="Play or pause"
+                android:src="@drawable/ic_widget_play" />
+
+            <ImageButton
+                android:id="@+id/forward"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:background="@null"
+                android:contentDescription="Fast-forward"
+                android:src="@drawable/ic_widget_forward" />
+
+            <ImageButton
+                android:id="@+id/next"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:background="@null"
+                android:contentDescription="Next"
+                android:src="@drawable/ic_widget_next" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

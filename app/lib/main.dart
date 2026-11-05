@@ -12,6 +12,7 @@ import 'core/downloads.dart';
 import 'core/library.dart';
 import 'core/player.dart';
 import 'core/updater.dart';
+import 'core/widget_bridge.dart';
 import 'ui/desktop.dart';
 import 'ui/mobile.dart';
 import 'ui/store_view.dart';
@@ -49,6 +50,8 @@ Future<void> main(List<String> args) async {
         artDownscaleHeight: 512,
       ),
     );
+    // Home-screen widgets.
+    await WidgetBridge(library, player).start();
   }
   // Windows and Linux: tray icon, close to tray, start at login, media keys.
   if (DesktopIntegration.supported) {

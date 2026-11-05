@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 - 2026-11-05
+
+- Android notification and lock screen rebuilt: cover art, episode and podcast name, a seek bar, and four buttons: rewind 10 s, play/pause, fast-forward 30 s and next in Up Next (the first three show when it is collapsed). Pressing play with nothing loaded starts Up Next. A proper one-colour status-bar icon.
+- Three home-screen widgets: **Now playing** (cover, title, progress, rewind / play-pause / fast-forward / next), **Up Next** (the next four episodes; tap one to play it) and **Play / pause** (one button with the title). They follow light and dark mode and update as you listen. Add them from the launcher's widget list or from Settings > Interface > Home screen widgets.
+- Settings > Interface: Open on (the start screen, added in 0.5.4).
+
 ## 0.5.4 - 2026-11-05
 
 - New setting, Settings > Interface > Open on: choose the screen PodSync starts on. Phone: Up Next (default), Episodes, Podcasts, Add podcast, Downloads, Statistics. Desktop: Episodes (default), Podcasts, Up Next, Favorites, Recently Played, Downloads, Statistics, Podcast Store. Both also offer "Where I left off", which reopens the last screen you used. It is per device.

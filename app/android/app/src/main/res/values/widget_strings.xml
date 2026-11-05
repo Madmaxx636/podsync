@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_now_playing_name">Now playing</string>
+    <string name="widget_now_playing_desc">The episode that is playing, with rewind, play or pause, fast-forward and next</string>
+    <string name="widget_up_next_name">Up Next</string>
+    <string name="widget_up_next_desc">The next episodes in your queue; tap one to play it</string>
+    <string name="widget_play_pause_name">Play / pause</string>
+    <string name="widget_play_pause_desc">One big button that plays or pauses PodSync</string>
+</resources>
