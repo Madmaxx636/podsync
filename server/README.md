@@ -6,6 +6,23 @@ server; each person only ever sees their own data.
 
 One file to back up, one container to run, nothing else to install.
 
+## Quickest way: the scripts
+
+Everything below is wrapped in scripts in `scripts/`; run them from the `server` folder.
+
+| Script | What it does |
+|---|---|
+| `./scripts/install.sh` | First setup: builds, starts, waits, prints the address for the app, offers to create your account |
+| `./scripts/adduser.sh NAME` | Add a person (`--list`, `--passwd NAME`, `--delete NAME` too) |
+| `./scripts/signup.sh off` | Close self-registration (`on` opens it again) |
+| `./scripts/backup.sh` | Consistent backup into `backups/` (keeps 14); `--cron` schedules it daily |
+| `./scripts/restore.sh FILE` | Put a backup back (takes a backup of the current data first) |
+| `./scripts/update.sh` | Backup, `git pull`, rebuild |
+| `./scripts/https.sh DOMAIN EMAIL` | Add Caddy for HTTPS with an automatic certificate |
+| `./scripts/duckdns.sh` | Keep a DuckDNS name pointed at your network (`--cron` every 5 minutes) |
+
+Set `PODSYNC_PORT=9090` before `install.sh` to use another port.
+
 ## Run it
 
 ```bash
