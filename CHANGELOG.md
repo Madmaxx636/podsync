@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 - 2026-11-05
+
+- Settings reorganised: the home screen is grouped under Listening (Playback, Up Next, Downloads), Library (Library and feeds, Podcasts, Sync, Import and backup), Display (Appearance, Interface, E-ink) and About, each page with its own coloured icon; long pages such as Downloads have section headings and thin dividers. E-ink keeps the same layout, black and white and paged.
+- With e-ink mode on, the settings that only apply to colour screens (Theme, Accent colour, Compact layout) are hidden. The E-ink page shows just the switch until you turn e-ink on, then its extra options.
+- The download folder now works. Tapping it opens a chooser: In PodSync (default), Phone storage, SD card when there is one, or "Choose a folder..." which opens Android's folder picker. Folders outside the app's own storage need Android's All files access; PodSync explains, opens the right Android page, and finishes choosing the folder when you come back. Episodes already downloaded stay where they are. On Windows and Linux it opens the system folder picker.
+
 ## 0.5.0 - 2026-11-05
 
 - Fixed: the "Up Next cleared" (and "sorted") banner with an Undo button never went away. It now disappears after six seconds.

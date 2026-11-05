@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.Bundle
 import android.provider.Settings
 import androidx.core.content.FileProvider
@@ -27,6 +28,26 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Choosing a download folder outside the app's own storage needs "All files access".
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dev.podsync/storage")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "hasAllFilesAccess" ->
+                        result.success(Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager())
+                    "requestAllFilesAccess" -> {
+                        if (Build.VERSION.SDK_INT >= 30) {
+                            startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                    Uri.parse("package:$packageName")
+                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dev.podsync/update")
             .setMethodCallHandler { call, result ->
                 // Installing an APK needs a one-time "allow from this app" switch. "prepare" is

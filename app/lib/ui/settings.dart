@@ -11,6 +11,7 @@ import '../core/library.dart';
 import '../core/updater.dart';
 import 'account.dart';
 import 'common.dart';
+import 'download_folder.dart';
 import 'paged.dart';
 import 'podcast_settings.dart';
 import 'update_ui.dart';
@@ -58,6 +59,12 @@ class TextItem extends SettingItem {
   final String Function() get;
   final void Function(String) set;
   final String hint;
+}
+
+/// The place downloads are saved: shows the folder and opens the folder chooser.
+class FolderItem extends SettingItem {
+  const FolderItem(super.title, super.subtitle, this.get);
+  final String Function() get;
 }
 
 class ActionItem extends SettingItem {
@@ -143,30 +150,33 @@ List<SettingsCategory> settingsCategories(
   return [
     SettingsCategory(
       'Appearance',
-      'Theme, colours, text size',
+      lib.einkMode ? 'Text size, artwork, dates' : 'Theme, colours, text size',
       Icons.palette_outlined,
       [
-        choice<String>(
-          'themeMode',
-          'Theme',
-          'Follow the system, or always light or dark',
-          {'Follow system': 'system', 'Light': 'light', 'Dark': 'dark'},
-        ),
-        choice<int>(
-          'accent',
-          'Accent colour',
-          'Used for buttons and highlights',
-          {
-            'Blue': 0xFF2196F3,
-            'Teal': 0xFF009688,
-            'Green': 0xFF4CAF50,
-            'Orange': 0xFFFF9800,
-            'Red': 0xFFF44336,
-            'Purple': 0xFF9C27B0,
-            'Pink': 0xFFE91E63,
-            'Slate': 0xFF607D8B,
-          },
-        ),
+        // Black and white on e-ink: the theme, accent colour and compact layout only apply to colour screens.
+        if (!lib.einkMode) ...[
+          choice<String>(
+            'themeMode',
+            'Theme',
+            'Follow the system, or always light or dark',
+            {'Follow system': 'system', 'Light': 'light', 'Dark': 'dark'},
+          ),
+          choice<int>(
+            'accent',
+            'Accent colour',
+            'Used for buttons and highlights',
+            {
+              'Blue': 0xFF2196F3,
+              'Teal': 0xFF009688,
+              'Green': 0xFF4CAF50,
+              'Orange': 0xFFFF9800,
+              'Red': 0xFFF44336,
+              'Purple': 0xFF9C27B0,
+              'Pink': 0xFFE91E63,
+              'Slate': 0xFF607D8B,
+            },
+          ),
+        ],
         choice<double>('textScale', 'Text size', 'Scales all text in the app', {
           'Small': 0.85,
           'Default': 1.0,
@@ -174,11 +184,12 @@ List<SettingsCategory> settingsCategories(
           'Larger': 1.3,
           'Largest': 1.5,
         }),
-        tog(
-          'compact',
-          'Compact layout',
-          'Tighter spacing so more fits on screen',
-        ),
+        if (!lib.einkMode)
+          tog(
+            'compact',
+            'Compact layout',
+            'Tighter spacing so more fits on screen',
+          ),
         tog(
           'showArtwork',
           'Show artwork',
@@ -424,6 +435,7 @@ List<SettingsCategory> settingsCategories(
           'Storage used',
           '${dm.doneCount} episodes, ${fmtBytes(dm.totalBytes)}',
         ),
+        const HeaderItem('Automatic downloads'),
         tog(
           'autoDownloadQueue',
           'Download Up Next automatically',
@@ -467,6 +479,7 @@ List<SettingsCategory> settingsCategories(
           'Keep favorites',
           'Never delete a favorite automatically',
         ),
+        const HeaderItem('When and how'),
         tog(
           'downloadWifiOnly',
           'Wi-Fi only',
@@ -478,13 +491,13 @@ List<SettingsCategory> settingsCategories(
           'More is faster but uses more bandwidth',
           _ints([1, 2, 3, 4], (v) => '$v'),
         ),
-        TextItem(
+        const HeaderItem('Storage'),
+        FolderItem(
           'Download folder',
-          'Where files are saved. Empty uses the app\'s own folder.',
+          'Where downloaded episodes are saved',
           () => lib.settings.downloadDir,
-          (v) => lib.setSetting('downloadDir', v.trim()),
-          hint: 'Default',
         ),
+        const HeaderItem('Clean up'),
         ActionItem(
           'Delete played downloads',
           'Free space by removing files for episodes you have played',
@@ -690,28 +703,31 @@ List<SettingsCategory> settingsCategories(
             () => lib.einkMode,
             lib.setEink,
           ),
-          choice<int>(
-            'einkRowHeight',
-            'Row size',
-            'Bigger rows mean fewer per page',
-            {'Compact': 72, 'Normal': 88, 'Large': 112, 'Extra large': 136},
-          ),
-          choice<int>(
-            'einkClockSec',
-            'Redraw playback clock',
-            'How often the time updates while playing; slower means less ghosting',
-            _ints([5, 15, 30, 60, 120], _secs),
-          ),
-          tog(
-            'einkGrayArt',
-            'Grayscale artwork',
-            'Convert covers to grayscale',
-          ),
-          tog(
-            'einkSwipe',
-            'Swipe to turn pages',
-            'In addition to the Prev and Next buttons',
-          ),
+          // The rest only matters while e-ink mode is on.
+          if (lib.einkMode) ...[
+            choice<int>(
+              'einkRowHeight',
+              'Row size',
+              'Bigger rows mean fewer per page',
+              {'Compact': 72, 'Normal': 88, 'Large': 112, 'Extra large': 136},
+            ),
+            choice<int>(
+              'einkClockSec',
+              'Redraw playback clock',
+              'How often the time updates while playing; slower means less ghosting',
+              _ints([5, 15, 30, 60, 120], _secs),
+            ),
+            tog(
+              'einkGrayArt',
+              'Grayscale artwork',
+              'Convert covers to grayscale',
+            ),
+            tog(
+              'einkSwipe',
+              'Swipe to turn pages',
+              'In addition to the Prev and Next buttons',
+            ),
+          ],
         ],
       )
     else
@@ -926,6 +942,14 @@ class _AccountPage extends StatelessWidget {
 // ---- rendering ------------------------------------------------------------------
 
 /// Settings on a phone or e-ink screen: a list of groups, each opening its own page.
+/// How the settings home groups its pages. A page that is not listed lands under "More".
+const _homeGroups = <(String, List<String>)>[
+  ('Listening', ['Playback', 'Up Next', 'Downloads']),
+  ('Library', ['Library and feeds', 'Podcasts', 'Sync', 'Import and backup']),
+  ('Display', ['Appearance', 'Interface', 'E-ink', 'Desktop layout', 'System']),
+  ('About', ['Advanced and about']),
+];
+
 class SettingsHome extends StatelessWidget {
   const SettingsHome({super.key});
 
@@ -939,16 +963,47 @@ class SettingsHome extends StatelessWidget {
       updates: context.watch<UpdateController>(),
     );
     final eink = lib.einkMode;
-    Widget row(BuildContext c, SettingsCategory cat) => InkWell(
-      onTap: () => Navigator.push(
-        c,
-        MaterialPageRoute(builder: (_) => SettingsPage(cat.title)),
+    final scheme = Theme.of(context).colorScheme;
+
+    // (heading, pages) in the order above; pages nobody claimed go last.
+    final claimed = {for (final g in _homeGroups) ...g.$2};
+    final groups = <(String, List<SettingsCategory>)>[
+      for (final g in _homeGroups)
+        (g.$1, [for (final t in g.$2) ...cats.where((c) => c.title == t)]),
+      (
+        'More',
+        [
+          for (final c in cats)
+            if (!claimed.contains(c.title)) c,
+        ],
       ),
+    ].where((g) => g.$2.isNotEmpty).toList();
+
+    void open(BuildContext c, SettingsCategory cat) => Navigator.push(
+      c,
+      MaterialPageRoute(builder: (_) => SettingsPage(cat.title)),
+    );
+
+    Widget row(BuildContext c, SettingsCategory cat) => InkWell(
+      onTap: () => open(c, cat),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            Icon(cat.icon, size: 28),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: eink ? null : scheme.primaryContainer,
+                border: eink ? Border.all(width: 2) : null,
+              ),
+              child: Icon(
+                cat.icon,
+                size: 22,
+                color: eink ? Colors.black : scheme.onPrimaryContainer,
+              ),
+            ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -957,6 +1012,8 @@ class SettingsHome extends StatelessWidget {
                 children: [
                   Text(
                     cat.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w600,
@@ -966,6 +1023,10 @@ class SettingsHome extends StatelessWidget {
                     cat.subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: eink ? Colors.black : scheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -975,16 +1036,55 @@ class SettingsHome extends StatelessWidget {
         ),
       ),
     );
+
+    Widget heading(String t) => Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 16, 6),
+      child: Text(
+        t.toUpperCase(),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.8,
+          color: eink ? Colors.black : scheme.primary,
+        ),
+      ),
+    );
+
     if (eink) {
-      return PagedList<SettingsCategory>(
-        items: cats,
-        itemExtent: 92,
-        itemBuilder: row,
+      // Paged, one row each; the group headings are rows too so nothing scrolls.
+      final flat = <Object>[
+        for (final g in groups) ...[g.$1, ...g.$2],
+      ];
+      return PagedList<Object>(
+        items: flat,
+        itemExtent: 80,
+        itemBuilder: (c, i) => i is String
+            ? Align(alignment: Alignment.bottomLeft, child: heading(i))
+            : row(c, i as SettingsCategory),
       );
     }
     return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
       children: [
-        for (final c in cats) SizedBox(height: 72, child: row(context, c)),
+        for (final g in groups) ...[
+          heading(g.$1),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (var i = 0; i < g.$2.length; i++) ...[
+                  if (i > 0) const Divider(height: 1, indent: 72),
+                  row(context, g.$2[i]),
+                ],
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1023,7 +1123,19 @@ class SettingsItems extends StatelessWidget {
         itemBuilder: (c, i) => SettingRow(i, fixed: true),
       );
     }
-    return ListView(children: [for (final i in cat.items) SettingRow(i)]);
+    // Thin lines between rows (not around the headings) and room at the bottom.
+    final children = <Widget>[];
+    for (var n = 0; n < cat.items.length; n++) {
+      final item = cat.items[n];
+      if (n > 0 && item is! HeaderItem && cat.items[n - 1] is! HeaderItem) {
+        children.add(const Divider(height: 1, indent: 16, endIndent: 16));
+      }
+      children.add(SettingRow(item));
+    }
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: children,
+    );
   }
 }
 
@@ -1103,7 +1215,10 @@ class SettingRow extends StatelessWidget {
       return InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          padding: EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: fixed ? 6 : 10,
+          ),
           child: Row(
             children: [
               Expanded(
@@ -1165,6 +1280,11 @@ class SettingRow extends StatelessWidget {
           value: v.isEmpty ? 'Default' : v,
           onTap: () => _editText(context, item),
         );
+      case FolderItem():
+        return tile(
+          value: downloadFolderLabel(item.get()),
+          onTap: () => chooseDownloadFolder(context, context.read<Library>()),
+        );
       case ActionItem():
         return tile(
           titleColor: item.danger ? Theme.of(context).colorScheme.error : null,
@@ -1179,7 +1299,7 @@ class SettingRow extends StatelessWidget {
           ),
         );
       case HeaderItem():
-        return Padding(
+        final heading = Padding(
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
           child: Text(
             item.title.toUpperCase(),
@@ -1191,6 +1311,10 @@ class SettingRow extends StatelessWidget {
             ),
           ),
         );
+        // On e-ink the row has a fixed height: sit the heading at its bottom edge, at the left.
+        return fixed
+            ? Align(alignment: Alignment.bottomLeft, child: heading)
+            : heading;
       case InfoItem():
         return tile();
     }

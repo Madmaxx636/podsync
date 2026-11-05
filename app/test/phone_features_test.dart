@@ -140,8 +140,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(lib.queue, [one, two]);
 
-        await tester.ensureVisible(
+        await tester.scrollUntilVisible(
           find.text('Clear Up Next'),
+          200,
         ); // it is near the bottom of the list
         await tester.pump();
         await tester.tap(find.text('Clear Up Next'));
