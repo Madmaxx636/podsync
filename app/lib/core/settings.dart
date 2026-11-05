@@ -9,6 +9,13 @@ class AppSettings {
     'compact': false,
     'showArtwork': true,
     'dateStyle': 'mdy', // mdy | dmy | iso
+    // Desktop system integration (this device)
+    'trayIcon': true, // a tray / notification-area icon with play controls
+    'closeToTray':
+        true, // closing the window keeps PodSync playing from the tray
+    'startAtLogin': false,
+    'startMinimized': true, // when started at login, stay in the tray instead of opening a window
+    'mediaControls': true, // media keys and the system's now-playing controls
     // Updates (this device)
     'updateCheck': true,
     'updateAuto': true, // Windows and Linux: install a found update at start-up without asking
@@ -171,6 +178,11 @@ class AppSettings {
   String get dateStyle => _get('dateStyle');
   int get requestTimeoutSec => _get('requestTimeoutSec');
   String get userAgent => _get('userAgent');
+  bool get trayIcon => _get('trayIcon');
+  bool get closeToTray => _get('closeToTray');
+  bool get startAtLogin => _get('startAtLogin');
+  bool get startMinimized => _get('startMinimized');
+  bool get mediaControls => _get('mediaControls');
   bool get updateCheck => _get('updateCheck');
   bool get updateAuto => _get('updateAuto');
   String get updateSkipped => _get('updateSkipped');

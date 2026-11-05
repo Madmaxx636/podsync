@@ -4,7 +4,6 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   connectivity_plus
-  launch_at_startup
   media_kit_libs_windows_audio
   screen_retriever_windows
   tray_manager

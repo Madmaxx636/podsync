@@ -6,6 +6,8 @@
 - E-ink buttons and chips are square-cornered instead of pills.
 - Automatic updates: Windows and Linux install a new version at start-up without asking (switch in Settings > Advanced and about); the server updates itself every night from GitHub (`scripts/auto-update.sh`, offered by the setup wizard).
 - The repository is public.
+- Desktop (Windows and Linux) system integration, under Settings > System: a tray icon with Show, Play/Pause, Skip back, Skip forward, Next and Quit; closing the window can keep PodSync playing from the tray (on by default); start when you sign in, optionally hidden in the tray; and media keys plus the system's now-playing controls (Windows' media overlay and lock screen, Linux's MPRIS: GNOME, KDE, `playerctl`). The Linux .deb now depends on the AppIndicator library for the tray.
+- Episode page after AntennaPod: compact header, one plain Play / Delete row (Chapters when there are some), everything else in the top-right menu.
 - Desktop speed: the library's episodes are stored in their own file and rewritten only when they change (saving progress every few seconds used to rewrite everything); the position clock redraws twice a second instead of five times; the menu bar and details pane no longer rebuild on every tick; sorting a long episode list works out its sort keys once.
 
 ## 0.3.1 - 2026-11-04

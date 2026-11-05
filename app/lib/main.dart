@@ -5,6 +5,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:provider/provider.dart';
 
+import 'core/desktop_integration.dart';
 import 'core/directory.dart';
 import 'core/downloads.dart';
 import 'core/library.dart';
@@ -15,7 +16,7 @@ import 'ui/mobile.dart';
 import 'ui/store_view.dart';
 import 'ui/update_ui.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (Platform.isAndroid) {
     await JustAudioBackground.init(
@@ -35,6 +36,11 @@ Future<void> main() async {
   final store = StoreController(StoreDirectory(), library);
   final updates = UpdateController(library);
   library.startBackground();
+  // Windows and Linux: tray icon, close to tray, start at login, media keys.
+  if (DesktopIntegration.supported) {
+    await DesktopIntegration.prepareWindow(library, args);
+    await DesktopIntegration(library, player).start();
+  }
 
   runApp(
     MultiProvider(

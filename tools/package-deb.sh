@@ -21,7 +21,7 @@ Section: sound
 Priority: optional
 Architecture: amd64
 Installed-Size: $size
-Depends: libgtk-3-0, libmpv2 | libmpv1
+Depends: libgtk-3-0, libmpv2 | libmpv1, libayatana-appindicator3-1 | libappindicator3-1
 Maintainer: PodSync <podsync@localhost>
 Homepage: https://github.com/Madmaxx636/podsync-releases
 Description: Podcast app that syncs through your own server

@@ -761,6 +761,39 @@ List<SettingsCategory> settingsCategories(
           tog('colDate', 'Show Release Date column', ''),
         ],
       ),
+    if (!android)
+      SettingsCategory(
+        'System',
+        'Tray icon, start at login, media keys',
+        Icons.desktop_windows_outlined,
+        [
+          tog(
+            'trayIcon',
+            'Show a tray icon',
+            'An icon in the notification area with play, pause, skip and quit',
+          ),
+          tog(
+            'closeToTray',
+            'Closing the window keeps PodSync running',
+            'The window hides to the tray and your episode keeps playing; Quit is in the tray menu. Needs the tray icon.',
+          ),
+          tog(
+            'startAtLogin',
+            'Start PodSync when I sign in',
+            'Opens it with your computer',
+          ),
+          tog(
+            'startMinimized',
+            'Start hidden in the tray',
+            'When started at sign-in, do not open the window (needs the tray icon)',
+          ),
+          tog(
+            'mediaControls',
+            'Media keys and system now-playing controls',
+            'Play, pause and skip from the keyboard, headphones, the lock screen or the desktop\'s media widget (restart not needed)',
+          ),
+        ],
+      ),
     SettingsCategory(
       'Advanced and about',
       'Reset, data location',

@@ -424,14 +424,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.4.16"
-  launch_at_startup:
-    dependency: "direct main"
-    description:
-      name: launch_at_startup
-      sha256: "82642797cd9caddaaf9c53e403e5f5539d9adeafe16f8a244db9311429c4f0e6"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.1"
   leak_tracker:
     dependency: transitive
     description:
