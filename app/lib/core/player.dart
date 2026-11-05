@@ -20,10 +20,20 @@ class PlayerController extends ChangeNotifier {
       _maybeSave();
       _checkSkipEnding();
       // E-ink panels ghost on every refresh, so redraw the clock only every few seconds.
-      if (library.einkMode &&
-          (pos - _lastUiTick).abs() <
-              Duration(seconds: library.settings.einkClockSec)) {
-        return;
+      if (library.einkMode) {
+        if ((pos - _lastUiTick).abs() <
+            Duration(seconds: library.settings.einkClockSec)) {
+          return;
+        }
+      } else {
+        // The position stream ticks about five times a second; the screen only needs a few,
+        // and every tick rebuilds whatever is listening.
+        final now = DateTime.now();
+        if (now.difference(_lastNotify) < const Duration(milliseconds: 500) &&
+            (pos - _lastUiTick).abs() < const Duration(seconds: 3)) {
+          return;
+        }
+        _lastNotify = now;
       }
       _lastUiTick = pos;
       notifyListeners();
@@ -54,6 +64,7 @@ class PlayerController extends ChangeNotifier {
   bool? _silenceApplied;
   DateTime? _pausedAt;
   Duration _lastUiTick = Duration.zero;
+  DateTime _lastNotify = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastSave = DateTime.fromMillisecondsSinceEpoch(0);
 
   Future<void> play(Episode e, {bool fromQueue = false}) async {

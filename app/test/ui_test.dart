@@ -81,10 +81,8 @@ void main() {
     await tester.pumpWidget(_app(lib, const MobileShell()));
     await tester.pump();
     expect(find.text('Ep Two'), findsOneWidget); // queue is the home screen
-    expect(find.text('Queue'), findsOneWidget);
+    expect(find.text('Queue'), findsWidgets); // the header and the bottom bar
 
-    await tester.tap(find.byTooltip('Open navigation menu'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Episodes'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Favorites'));
@@ -203,15 +201,13 @@ void main() {
       await tester.pumpWidget(_app(lib, const MobileShell()));
       await tester.pump();
 
-      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.tap(find.text('Podcasts')); // the bottom bar
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Subscriptions'));
-      await tester.pumpAndSettle();
-      expect(find.text('Subscriptions'), findsOneWidget); // the app bar title
+      expect(find.text('Subscriptions'), findsOneWidget); // the screen's header
 
       await tester.binding.handlePopRoute(); // system back
       await tester.pumpAndSettle();
-      expect(find.text('Queue'), findsOneWidget);
+      expect(find.text('Queue'), findsWidgets);
       expect(find.text('Subscriptions'), findsNothing);
       expect(tester.takeException(), isNull);
     },

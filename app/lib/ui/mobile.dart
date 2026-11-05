@@ -95,10 +95,12 @@ class _MobileShellState extends State<MobileShell> {
         }
       },
       child: Scaffold(
-        appBar: eink
-            ? null
-            : AppBar(
-                title: Text(_titles[section]!),
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              _ScreenHeader(
+                title: _titles[section]!,
                 actions: [
                   if (lib.signedIn)
                     IconButton(
@@ -113,75 +115,127 @@ class _MobileShellState extends State<MobileShell> {
                     ),
                 ],
               ),
-        drawer: eink
-            ? null
-            : Drawer(
-                child: SafeArea(
-                  child: Column(
-                    children: [
-                      const DrawerHeader(
-                        margin: EdgeInsets.zero,
-                        child: Align(
-                          alignment: Alignment.bottomLeft,
-                          child: Text(
-                            'PodSync',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ),
-                      for (final s in _Section.values)
-                        if (!_hidden(lib, s))
-                          ListTile(
-                            leading: Icon(_icons[s]),
-                            title: Text(_titles[s]!),
-                            trailing: switch (s) {
-                              _Section.queue =>
-                                lib.queue.isEmpty
-                                    ? null
-                                    : Text('${lib.queue.length}'),
-                              _Section.episodes =>
-                                lib.unplayedCount == 0
-                                    ? null
-                                    : Text('${lib.unplayedCount}'),
-                              _Section.podcasts =>
-                                lib.subscriptions.isEmpty
-                                    ? null
-                                    : Text('${lib.subscriptions.length}'),
-                              _Section.downloads => (() {
-                                final n = context
-                                    .read<DownloadManager>()
-                                    .doneCount;
-                                return n == 0 ? null : Text('$n');
-                              })(),
-                              _ => null,
-                            },
-                            selected: s == section,
-                            onTap: () {
-                              _select(s);
-                              Navigator.pop(context);
-                            },
-                          ),
-                    ],
-                  ),
-                ),
-              ),
-        body: SafeArea(
-          top: eink,
-          bottom: false,
-          child: Column(
-            children: [
               if (eink) _EinkTabs(section: section, onSelect: _select),
               Expanded(child: body),
             ],
           ),
         ),
-        bottomNavigationBar: const MiniPlayer(),
+        // One look for both kinds of screen: the same headers, rows, mini player and player.
+        // Colour phones navigate with AntennaPod's bottom bar, e-ink with the tabs above.
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [const MiniPlayer(), if (!eink) _bottomNav(context, lib)],
+        ),
       ),
     );
   }
+
+  static const _navMain = [
+    _Section.queue,
+    _Section.episodes,
+    _Section.podcasts,
+    _Section.add,
+  ];
+  static const _navMore = [
+    _Section.downloads,
+    _Section.stats,
+    _Section.settings,
+  ];
+
+  Widget _bottomNav(BuildContext context, Library lib) {
+    final inMore = _navMore.contains(section);
+    final index = inMore ? _navMain.length : _navMain.indexOf(section);
+    return NavigationBar(
+      height: 68,
+      selectedIndex: index,
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      onDestinationSelected: (i) {
+        if (i < _navMain.length) {
+          _select(_navMain[i]);
+        } else {
+          _showMore(context, lib);
+        }
+      },
+      destinations: [
+        for (final s in _navMain)
+          NavigationDestination(
+            icon: _navIcon(lib, s),
+            selectedIcon: _navIcon(lib, s),
+            label: s == _Section.podcasts
+                ? 'Podcasts'
+                : _titles[s]!.split(' ').first,
+          ),
+        const NavigationDestination(
+          icon: Icon(Icons.more_horiz),
+          label: 'More',
+        ),
+      ],
+    );
+  }
+
+  Widget _navIcon(Library lib, _Section s) {
+    final n = switch (s) {
+      _Section.queue => lib.queue.length,
+      _Section.episodes => lib.unplayedCount,
+      _ => 0,
+    };
+    final icon = Icon(_icons[s]);
+    return n == 0 ? icon : Badge(label: Text('$n'), child: icon);
+  }
+
+  void _showMore(BuildContext context, Library lib) {
+    final dm = context.read<DownloadManager>();
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final s in _navMore)
+              if (!_hidden(lib, s))
+                ListTile(
+                  leading: Icon(_icons[s]),
+                  title: Text(_titles[s]!),
+                  trailing: s == _Section.downloads && dm.doneCount > 0
+                      ? Text('${dm.doneCount}')
+                      : null,
+                  selected: s == section,
+                  onTap: () {
+                    Navigator.pop(c);
+                    _select(s);
+                  },
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The big bold title at the top of each screen, with its actions at the right.
+class _ScreenHeader extends StatelessWidget {
+  const _ScreenHeader({required this.title, this.actions = const []});
+  final String title;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 10, 6, 2),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+          ),
+        ),
+        ...actions,
+      ],
+    ),
+  );
 }
 
 class _EinkTabs extends StatelessWidget {
@@ -391,11 +445,11 @@ class QueueView extends StatelessWidget {
             showQueueUndo(context, lib, 'Removed from queue');
           },
           background: Container(color: Colors.red.shade400),
-          child: SizedBox(height: 88, child: EpisodeTile(items[i])),
+          child: SizedBox(height: 104, child: EpisodeTile(items[i])),
         ),
       );
     } else {
-      list = adaptiveList(context, items, 88, (c, e) => EpisodeTile(e));
+      list = adaptiveList(context, items, 104, (c, e) => EpisodeTile(e));
     }
     return Column(
       children: [
@@ -495,7 +549,7 @@ class _QueueSummary extends StatelessWidget {
               child: Text(
                 n == 0
                     ? 'Nothing queued'
-                    : '$n episodes  ·  ${fmtLong(left, zero: 'nothing')} left  ·  ends about $clock',
+                    : '$n episodes • ${fmtLong(left, zero: 'nothing')} left • ends about $clock',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -643,7 +697,7 @@ class _EpisodesViewState extends State<EpisodesView> {
             child: adaptiveList(
               context,
               items,
-              88,
+              104,
               (c, e) => EpisodeTile(e),
               empty: empty,
             ),
@@ -771,6 +825,54 @@ class _PodcastRow extends StatelessWidget {
 
 // ---- episode row -------------------------------------------------------------
 
+/// The round play / pause button AntennaPod puts on every row and on the player: an outline on
+/// e-ink, a filled accent circle in colour.
+class PlayCircle extends StatelessWidget {
+  const PlayCircle({
+    super.key,
+    required this.playing,
+    required this.onTap,
+    this.size = 52,
+    this.eink = false,
+    this.filled = false,
+  });
+  final bool playing;
+  final VoidCallback onTap;
+  final double size;
+  final bool eink;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final fill = filled && !eink;
+    final line = eink ? Colors.black : (fill ? cs.primary : cs.onSurface);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Tooltip(
+        message: playing ? 'Pause' : 'Play',
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: fill ? cs.primary : null,
+            border: fill
+                ? null
+                : Border.all(width: eink ? 2.5 : 2, color: line),
+          ),
+          child: Icon(
+            playing ? Icons.pause : Icons.play_arrow,
+            size: size * 0.58,
+            color: fill ? cs.onPrimary : line,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class EpisodeTile extends StatelessWidget {
   const EpisodeTile(this.e, {super.key});
   final Episode e;
@@ -782,7 +884,6 @@ class EpisodeTile extends StatelessWidget {
     final dm = context.watch<DownloadManager>();
     final eink = lib.einkMode;
     final pr = lib.progressOf(e.id);
-    final podcast = lib.podcasts[e.feedUrl];
     final dur = e.durationMs > 0 ? e.durationMs : pr.durationMs;
     final fraction = dur > 0 ? (pr.positionMs / dur).clamp(0.0, 1.0) : 0.0;
     final isCurrent = context.select<PlayerController, bool>(
@@ -791,16 +892,41 @@ class EpisodeTile extends StatelessWidget {
     final isPlaying = context.select<PlayerController, bool>(
       (p) => p.current?.id == e.id && p.playing,
     );
+    final cs = Theme.of(context).colorScheme;
+    final muted = eink ? Colors.black : cs.onSurfaceVariant;
+    // "Sep 8 • 304 MB • Downloaded", then the title, then the time or progress: AntennaPod's row.
     final meta = [
       fmtDate(e.published, year: false),
-      if (dur > 0) fmtDurationMs(dur),
-      if (pr.played)
-        'Played'
-      else if (pr.positionMs > 0)
-        '${fmtDurationMs(dur - pr.positionMs)} left',
+      if (e.fileSize > 0) fmtBytes(e.fileSize),
+      if (dm.isDownloaded(e.id)) 'Downloaded',
       if (lib.isFavorite(e.id)) '\u2605',
-      if (eink && dm.isDownloaded(e.id)) 'Downloaded',
-    ].where((s) => s.isNotEmpty).join(' • ');
+    ].where((x) => x.isNotEmpty).join(' • ');
+    final smallStyle = TextStyle(
+      fontSize: 13,
+      color: muted,
+      fontWeight: FontWeight.w600,
+    );
+    final Widget status = pr.played
+        ? Text('Played', style: smallStyle)
+        : (fraction > 0
+              ? Row(
+                  children: [
+                    Text(fmtDurationMs(pr.positionMs), style: smallStyle),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: LinearProgressIndicator(
+                        value: fraction,
+                        minHeight: 3,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '-${fmtDurationMs(dur - pr.positionMs)}',
+                      style: smallStyle,
+                    ),
+                  ],
+                )
+              : Text(dur > 0 ? fmtDurationMs(dur) : '', style: smallStyle));
 
     return InkWell(
       onTap: () => Navigator.push(
@@ -809,10 +935,10 @@ class EpisodeTile extends StatelessWidget {
       ),
       onLongPress: () => _menu(context, lib),
       child: Padding(
-        padding: const EdgeInsets.only(left: 12, right: 4, top: 3, bottom: 3),
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
         child: Row(
           children: [
-            Art(e.imageUrl, size: 56, gray: eink),
+            Art(e.imageUrl, size: 64, gray: eink),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -820,68 +946,43 @@ class EpisodeTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    podcast?.title ?? '',
+                    meta,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: smallStyle,
                   ),
+                  const SizedBox(height: 2),
                   Text(
                     e.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 17,
+                      height: 1.15,
                       fontWeight: pr.played
                           ? FontWeight.normal
-                          : FontWeight.w600,
+                          : FontWeight.w700,
                       color: pr.played ? Theme.of(context).disabledColor : null,
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    meta,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  if (fraction > 0 && !pr.played)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 3),
-                      child: LinearProgressIndicator(
-                        value: fraction,
-                        minHeight: 2,
-                      ),
-                    ),
+                  const SizedBox(height: 4),
+                  status,
                 ],
               ),
             ),
-            // On e-ink the row is too narrow for this; the "Downloaded" note and the menu cover it.
+            const SizedBox(width: 6),
+            // The download icon can be switched off in Settings > Interface; e-ink spells it out
+            // in the "Downloaded" note instead.
             if (!eink && lib.settings.uiRowDownloadIcon)
               DownloadIcon(e, size: 22),
-            if (eink)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: SizedBox(
-                  width: 84,
-                  child: EinkButton(
-                    isPlaying ? 'Pause' : 'Play',
-                    height: 44,
-                    onTap: () => isCurrent ? player.toggle() : player.play(e),
-                  ),
-                ),
-              )
-            else
-              IconButton(
-                iconSize: 36,
-                tooltip: isPlaying ? 'Pause' : 'Play',
-                icon: Icon(
-                  isPlaying
-                      ? Icons.pause_circle_outline
-                      : Icons.play_circle_outline,
-                ),
-                onPressed: () => isCurrent ? player.toggle() : player.play(e),
-              ),
-            // E-ink has no comfortable long-press, so show the menu button outright.
+            const SizedBox(width: 4),
+            PlayCircle(
+              playing: isPlaying,
+              size: 52,
+              eink: eink,
+              onTap: () => isCurrent ? player.toggle() : player.play(e),
+            ),
+            // E-ink has no comfortable long-press, so its menu button is always visible.
             if (eink)
               IconButton(
                 tooltip: 'More',
@@ -1363,7 +1464,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
               child: adaptiveList(
                 context,
                 eps,
-                88,
+                104,
                 (c, e) => EpisodeTile(e),
                 empty: 'No episodes',
               ),
@@ -1405,70 +1506,77 @@ class MiniPlayer extends StatelessWidget {
     );
     final e = player.current;
     if (e == null || !visible) return const SizedBox.shrink();
+    final eink = lib.einkMode;
     final total = player.duration.inMilliseconds;
+    final cs = Theme.of(context).colorScheme;
     return Material(
-      elevation: lib.einkMode ? 0 : 8,
-      color: Theme.of(context).colorScheme.surface,
-      child: SafeArea(
-        top: false,
-        child: Container(
-          decoration: lib.einkMode
-              ? const BoxDecoration(border: Border(top: BorderSide(width: 2)))
-              : null,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              InkWell(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const PlayerScreen()),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
-                  child: Row(
-                    children: [
-                      Art(e.imageUrl, size: 44, gray: lib.einkMode),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              e.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
+      elevation: eink ? 0 : 6,
+      color: eink ? Colors.white : cs.surfaceContainerHigh,
+      child: Container(
+        decoration: eink
+            ? const BoxDecoration(border: Border(top: BorderSide(width: 2)))
+            : null,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // AntennaPod's thin progress line runs along the top edge.
+            LinearProgressIndicator(
+              value: total > 0
+                  ? (player.position.inMilliseconds / total).clamp(0.0, 1.0)
+                  : 0,
+              minHeight: 3,
+            ),
+            InkWell(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PlayerScreen()),
+              ),
+              child: SizedBox(
+                height: 62,
+                child: Row(
+                  children: [
+                    Art(e.imageUrl, size: 62, radius: 0, gray: eink),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            e.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
                             ),
-                            Text(
-                              lib.podcastTitle(e.feedUrl),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          Text(
+                            lib.podcastTitle(e.feedUrl),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: eink ? Colors.black : cs.onSurfaceVariant,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        iconSize: 32,
-                        icon: Icon(
-                          player.playing ? Icons.pause : Icons.play_arrow,
-                        ),
-                        onPressed: player.toggle,
+                    ),
+                    IconButton(
+                      iconSize: 36,
+                      tooltip: player.playing ? 'Pause' : 'Play',
+                      icon: Icon(
+                        player.playing ? Icons.pause : Icons.play_arrow,
                       ),
-                    ],
-                  ),
+                      onPressed: player.toggle,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                 ),
               ),
-              LinearProgressIndicator(
-                value: total > 0
-                    ? (player.position.inMilliseconds / total).clamp(0.0, 1.0)
-                    : 0,
-                minHeight: 2,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1495,90 +1603,190 @@ class PlayerScreen extends StatelessWidget {
         .toDouble()
         .clamp(0, total > 0 ? total : 1)
         .toDouble();
-
-    final scheme = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
+    final muted = eink ? Colors.black : cs.onSurfaceVariant;
     final speed = lib.speedFor(e.feedUrl);
     Chapter? chapterNow;
     for (final c in e.chapters) {
       if (c.startMs <= player.position.inMilliseconds) chapterNow = c;
     }
-    final speedButton = lib.settings.uiPlayerSpeed
-        ? Tooltip(
-            message: 'Playback speed',
-            child: TextButton(
-              onPressed: () {
-                const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
-                final i = speeds.indexWhere((s) => (s - speed).abs() < 0.01);
-                player.setSpeed(speeds[(i + 1) % speeds.length]);
-              },
-              child: Text(
-                '${speed.toStringAsFixed(1)}x',
+
+    void openNotes() => eink
+        ? Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => EpisodeScreen(e.id)),
+          )
+        : _showPlayerSheet(context, e);
+
+    // An icon with a small label under it, like AntennaPod's speed and skip controls.
+    Widget control(
+      IconData icon,
+      String label,
+      String tooltip,
+      VoidCallback onTap,
+    ) => Tooltip(
+      message: tooltip,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 36,
+        child: SizedBox(
+          width: 58,
+          height: 64,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 34),
+              const SizedBox(height: 2),
+              Text(
+                label,
                 style: const TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ),
-          )
-        : const SizedBox(width: 48);
-
-    // Laid out like AntennaPod's player: collapse arrow and actions on top, big cover,
-    // episode and podcast title, seek bar with elapsed and remaining time, then the
-    // speed button, rewind, a large play button, fast-forward and skip.
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: 'Close player',
-          icon: const Icon(Icons.keyboard_arrow_down, size: 32),
-          onPressed: () => Navigator.maybePop(context),
-        ),
-        actions: [
-          if (lib.settings.uiPlayerSleep) const SleepTimerButton(),
-          IconButton(
-            tooltip: 'Show notes',
-            icon: const Icon(Icons.notes),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => EpisodeScreen(e.id)),
-            ),
+            ],
           ),
+        ),
+      ),
+    );
+
+    final controls = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          if (lib.settings.uiPlayerSpeed)
+            control(
+              Icons.speed,
+              speed.toStringAsFixed(2),
+              'Playback speed',
+              () {
+                const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
+                final i = speeds.indexWhere((x) => (x - speed).abs() < 0.01);
+                player.setSpeed(speeds[(i + 1) % speeds.length]);
+              },
+            )
+          else
+            const SizedBox(width: 58),
+          control(
+            Icons.fast_rewind,
+            '${lib.skipBackSec}',
+            'Back ${lib.skipBackSec}s',
+            player.skipBack,
+          ),
+          PlayCircle(
+            playing: player.playing,
+            size: 76,
+            eink: eink,
+            filled: true,
+            onTap: player.toggle,
+          ),
+          control(
+            Icons.fast_forward,
+            '${lib.skipForwardSec}',
+            'Forward ${lib.skipForwardSec}s',
+            player.skipForward,
+          ),
+          control(Icons.skip_next, '', 'Next in queue', player.next),
         ],
       ),
+    );
+
+    return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
+            // Collapse arrow at the left; favourite, sleep timer and the menu at the right.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Close player',
+                    icon: const Icon(Icons.keyboard_arrow_down, size: 32),
+                    onPressed: () => Navigator.maybePop(context),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: lib.isFavorite(e.id)
+                        ? 'Remove from favorites'
+                        : 'Add to favorites',
+                    icon: Icon(
+                      lib.isFavorite(e.id) ? Icons.star : Icons.star_border,
+                    ),
+                    onPressed: () =>
+                        lib.setFavorite(e.id, !lib.isFavorite(e.id)),
+                  ),
+                  if (lib.settings.uiPlayerSleep) const SleepTimerButton(),
+                  PopupMenuButton<String>(
+                    tooltip: 'More',
+                    onSelected: (v) async {
+                      switch (v) {
+                        case 'notes':
+                          openNotes();
+                        case 'played':
+                          lib.markPlayed(e.id, true);
+                        case 'link':
+                          await Clipboard.setData(
+                            ClipboardData(
+                              text: e.link.isNotEmpty ? e.link : e.audioUrl,
+                            ),
+                          );
+                          if (context.mounted) {
+                            showSnack(context, 'Link copied');
+                          }
+                      }
+                    },
+                    itemBuilder: (c) => const [
+                      PopupMenuItem(value: 'notes', child: Text('Show notes')),
+                      PopupMenuItem(
+                        value: 'played',
+                        child: Text('Mark as played'),
+                      ),
+                      PopupMenuItem(
+                        value: 'link',
+                        child: Text('Copy episode link'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: LayoutBuilder(
                 builder: (context, c) {
-                  final side = max(0.0, min(c.maxWidth - 32, c.maxHeight - 8));
+                  final side = max(0.0, min(c.maxWidth - 64, c.maxHeight - 8));
                   return Center(
-                    child: Art(e.imageUrl, size: side, radius: 8, gray: eink),
+                    child: Art(e.imageUrl, size: side, radius: 10, gray: eink),
                   );
                 },
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
               child: Column(
                 children: [
                   Text(
-                    e.title,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    lib.podcastTitle(e.feedUrl),
+                    '${lib.podcastTitle(e.feedUrl)}  •  ${fmtDate(e.published, year: false)}',
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: eink ? null : scheme.onSurfaceVariant,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: muted,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    e.title,
+                    textAlign: TextAlign.center,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      height: 1.2,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   if (chapterNow != null)
@@ -1597,11 +1805,21 @@ class PlayerScreen extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(player.error!, textAlign: TextAlign.center),
                     ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: openNotes,
+                    icon: const Icon(Icons.info_outline, size: 20),
+                    label: Text(
+                      e.chapters.isEmpty
+                          ? 'Shownotes'
+                          : 'Shownotes and chapters',
+                    ),
+                  ),
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
               child: Slider(
                 value: pos,
                 max: total > 0 ? total : 1,
@@ -1624,125 +1842,11 @@ class PlayerScreen extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 8),
-            if (eink)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: EinkButton(
-                            'Back ${lib.skipBackSec}',
-                            icon: Icons.replay,
-                            onTap: player.skipBack,
-                            height: 56,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          flex: 2,
-                          child: EinkButton(
-                            player.playing ? 'Pause' : 'Play',
-                            icon: player.playing
-                                ? Icons.pause
-                                : Icons.play_arrow,
-                            selected: true,
-                            onTap: player.toggle,
-                            height: 56,
-                            fontSize: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: EinkButton(
-                            'Fwd ${lib.skipForwardSec}',
-                            icon: Icons.forward_30,
-                            onTap: player.skipForward,
-                            height: 56,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        if (lib.settings.uiPlayerSpeed) ...[
-                          Expanded(
-                            child: EinkButton(
-                              'Speed ${speed.toStringAsFixed(1)}x',
-                              height: 48,
-                              onTap: () {
-                                const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
-                                final i = speeds.indexWhere(
-                                  (s) => (s - speed).abs() < 0.01,
-                                );
-                                player.setSpeed(
-                                  speeds[(i + 1) % speeds.length],
-                                );
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        Expanded(
-                          child: EinkButton(
-                            'Next',
-                            icon: Icons.skip_next,
-                            onTap: player.next,
-                            height: 48,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    SizedBox(width: 56, child: Center(child: speedButton)),
-                    IconButton(
-                      iconSize: 40,
-                      tooltip: 'Back ${lib.skipBackSec}s',
-                      icon: const Icon(Icons.replay_10),
-                      onPressed: player.skipBack,
-                    ),
-                    IconButton.filled(
-                      iconSize: 44,
-                      padding: const EdgeInsets.all(14),
-                      // The e-ink theme paints every icon button black, which would hide the icon here.
-                      style: IconButton.styleFrom(
-                        foregroundColor: scheme.onPrimary,
-                      ),
-                      tooltip: player.playing ? 'Pause' : 'Play',
-                      icon: Icon(
-                        player.playing ? Icons.pause : Icons.play_arrow,
-                      ),
-                      onPressed: player.toggle,
-                    ),
-                    IconButton(
-                      iconSize: 40,
-                      tooltip: 'Forward ${lib.skipForwardSec}s',
-                      icon: const Icon(Icons.forward_30),
-                      onPressed: player.skipForward,
-                    ),
-                    IconButton(
-                      iconSize: 40,
-                      tooltip: 'Next in queue',
-                      icon: const Icon(Icons.skip_next),
-                      onPressed: player.next,
-                    ),
-                  ],
-                ),
-              ),
+            const SizedBox(height: 6),
+            controls,
             if (lib.settings.uiPlayerVolume)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 24, 0),
+                padding: const EdgeInsets.fromLTRB(16, 2, 24, 0),
                 child: Row(
                   children: [
                     IconButton(
@@ -1772,36 +1876,7 @@ class PlayerScreen extends StatelessWidget {
                   ],
                 ),
               ),
-            if (eink)
-              const SizedBox(height: 8)
-            else
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _showPlayerSheet(context, e),
-                onVerticalDragEnd: (d) {
-                  if ((d.primaryVelocity ?? 0) < -200) {
-                    _showPlayerSheet(context, e);
-                  }
-                },
-                child: SizedBox(
-                  height: 48,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.keyboard_arrow_up,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                      Text(
-                        e.chapters.isEmpty
-                            ? 'Show notes'
-                            : 'Show notes and chapters',
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            const SizedBox(height: 8),
           ],
         ),
       ),

@@ -50,7 +50,17 @@ class AppMenuBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lib = context.watch<Library>();
-    final player = context.watch<PlayerController>();
+    // Only what the menus show: the playing episode, play state and the sleep timer. Watching the
+    // whole controller rebuilt the menu bar on every position tick.
+    context.select<PlayerController, Object?>(
+      (p) => (
+        p.current?.id,
+        p.playing,
+        p.sleepActive,
+        p.sleepRemaining?.inMinutes,
+      ),
+    );
+    final player = context.read<PlayerController>();
     final dm = context.watch<DownloadManager>();
     final pal = Pal.of(context);
     final s = lib.settings;

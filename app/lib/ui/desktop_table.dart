@@ -79,16 +79,37 @@ class _EpisodeTableState extends State<EpisodeTable> {
     final asc = _asc ?? (sortBy == 'date' ? s.sortOldestFirst : true);
     final queue = widget.queueMode;
     final fixedOrder = queue || widget.keepOrder;
-    selected.removeWhere((id) => !widget.episodes.any((e) => e.id == id));
+    final present = {for (final e in widget.episodes) e.id};
+    selected.removeWhere((id) => !present.contains(id));
 
     var eps = [...widget.episodes];
     if (!fixedOrder) {
+      // Work the sort keys out once per episode, not on every comparison: with thousands of
+      // episodes the comparisons run tens of thousands of times per sort.
+      final names = sortBy == 'name'
+          ? {for (final e in eps) e.id: e.title.toLowerCase()}
+          : const <String, String>{};
+      final podcastTitles = sortBy == 'podcast'
+          ? <String, String>{}
+          : const <String, String>{};
+      if (sortBy == 'podcast') {
+        for (final e in eps) {
+          podcastTitles.putIfAbsent(
+            e.feedUrl,
+            () => lib.podcastTitle(e.feedUrl),
+          );
+        }
+      }
+      final ratings = sortBy == 'rating'
+          ? {for (final e in eps) e.id: lib.ratingOf(e.id)}
+          : const <String, int>{};
       int cmp(Episode a, Episode b) => switch (sortBy) {
-        'name' => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        'name' => names[a.id]!.compareTo(names[b.id]!),
         'time' => a.durationMs.compareTo(b.durationMs),
-        'podcast' =>
-          lib.podcastTitle(a.feedUrl).compareTo(lib.podcastTitle(b.feedUrl)),
-        'rating' => lib.ratingOf(a.id).compareTo(lib.ratingOf(b.id)),
+        'podcast' => podcastTitles[a.feedUrl]!.compareTo(
+          podcastTitles[b.feedUrl]!,
+        ),
+        'rating' => ratings[a.id]!.compareTo(ratings[b.id]!),
         _ => a.published.compareTo(b.published),
       };
       eps.sort((a, b) => asc ? cmp(a, b) : cmp(b, a));

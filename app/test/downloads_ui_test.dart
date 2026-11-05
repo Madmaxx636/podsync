@@ -269,7 +269,7 @@ void main() {
   });
 
   group('phone', () {
-    testWidgets('drawer has Downloads and Statistics with counts', (
+    testWidgets('More has Downloads and Statistics; the bar counts Up Next', (
       tester,
     ) async {
       await pump(
@@ -278,14 +278,17 @@ void main() {
         size: const Size(1080, 2200),
         ratio: 3,
       );
-      await tester.tap(find.byTooltip('Open navigation menu'));
+      expect(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('2'),
+        ),
+        findsOneWidget,
+      ); // Up Next count
+      await tester.tap(find.text('More'));
       await tester.pumpAndSettle();
       expect(find.text('Downloads'), findsOneWidget);
       expect(find.text('Statistics'), findsOneWidget);
-      expect(
-        find.descendant(of: find.byType(Drawer), matching: find.text('2')),
-        findsOneWidget,
-      ); // Up Next count
       await tester.tap(find.text('Statistics'));
       await tester.pumpAndSettle();
       expect(find.text('listened'), findsOneWidget);

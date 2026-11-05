@@ -24,7 +24,10 @@ class EpisodeDetailPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lib = context.watch<Library>();
-    final player = context.watch<PlayerController>();
+    context.select<PlayerController, Object?>(
+      (p) => (p.current?.id, p.playing),
+    );
+    final player = context.read<PlayerController>();
     final pal = Pal.of(context);
     final e = episode ?? player.current;
 

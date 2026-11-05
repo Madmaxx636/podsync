@@ -90,6 +90,7 @@ class Library extends ChangeNotifier {
 
   File? _file;
   Timer? _saveTimer;
+  bool _episodesDirty = true; // the episodes file needs rewriting
   Timer? _refreshTimer;
 
   /// Called when a refresh finds episodes that were not in the feed before (the download manager listens).
@@ -106,10 +107,17 @@ class Library extends ChangeNotifier {
         );
     if (!await _file!.exists()) return;
     try {
-      _applyMap(
-        jsonDecode(await _file!.readAsString()) as Map<String, dynamic>,
-        includeAccounts: true,
-      );
+      final j = jsonDecode(await _file!.readAsString()) as Map<String, dynamic>;
+      // Episodes (the bulk of the data) live in their own file, so saving progress every few
+      // seconds does not rewrite them. An older library.json still holds them inline.
+      final ef = File('${_file!.path}.episodes');
+      if (!j.containsKey('episodes') &&
+          j['episodesFile'] == true &&
+          await ef.exists()) {
+        j['episodes'] = jsonDecode(await ef.readAsString());
+        _episodesDirty = false;
+      }
+      _applyMap(j, includeAccounts: true);
     } catch (e) {
       debugPrint('Could not read library.json: $e');
     }
@@ -126,6 +134,9 @@ class Library extends ChangeNotifier {
     for (final x in (j['episodes'] as List? ?? [])) {
       final e = Episode.fromJson(x);
       episodes[e.id] = e;
+    }
+    if (!includeAccounts) {
+      _episodesDirty = true; // restored from a backup
     }
     (j['progress'] as Map? ?? {}).forEach(
       (k, v) => progress[k] = Progress.fromJson(v),
@@ -170,13 +181,17 @@ class Library extends ChangeNotifier {
     _saveTimer = Timer(const Duration(milliseconds: 800), saveNow);
   }
 
-  Map<String, dynamic> _toMap({required bool includeAccounts}) => {
+  Map<String, dynamic> _toMap({
+    required bool includeAccounts,
+    bool withEpisodes = true,
+  }) => {
     'podcasts': podcasts.values.map((x) {
       final j = x.toJson();
       if (!includeAccounts) j['password'] = '';
       return j;
     }).toList(),
-    'episodes': episodes.values.map((x) => x.toJson()).toList(),
+    if (withEpisodes)
+      'episodes': episodes.values.map((x) => x.toJson()).toList(),
     'progress': progress.map((k, v) => MapEntry(k, v.toJson())),
     'favorites': favorites.map((k, v) => MapEntry(k, {'on': v.on, 'at': v.at})),
     'ratings': ratings.map(
@@ -211,10 +226,23 @@ class Library extends ChangeNotifier {
   Future<void> saveNow() async {
     final f = _file;
     if (f == null) return;
-    final data = jsonEncode(_toMap(includeAccounts: true));
-    // Write to a temp file first so a crash can't leave a half-written library.
-    final tmp = File('${f.path}.tmp');
     await f.parent.create(recursive: true);
+    // The episodes are only written when they changed (a refresh, a new subscription, clean-up).
+    if (_episodesDirty) {
+      await _writeAtomic(
+        File('${f.path}.episodes'),
+        jsonEncode(episodes.values.map((x) => x.toJson()).toList()),
+      );
+      _episodesDirty = false;
+    }
+    final map = _toMap(includeAccounts: true, withEpisodes: false)
+      ..['episodesFile'] = true;
+    await _writeAtomic(f, jsonEncode(map));
+  }
+
+  /// Write to a temp file first so a crash can't leave a half-written file.
+  Future<void> _writeAtomic(File f, String data) async {
+    final tmp = File('${f.path}.tmp');
     await tmp.writeAsString(data);
     await tmp.rename(f.path);
   }
@@ -237,6 +265,7 @@ class Library extends ChangeNotifier {
     }
     podcasts.clear();
     episodes.clear();
+    _episodesDirty = true;
     progress.clear();
     favorites.clear();
     ratings.clear();
@@ -266,6 +295,7 @@ class Library extends ChangeNotifier {
   Future<void> wipeAll() async {
     podcasts.clear();
     episodes.clear();
+    _episodesDirty = true;
     progress.clear();
     favorites.clear();
     ratings.clear();
@@ -391,6 +421,7 @@ class Library extends ChangeNotifier {
       final old = episodes[e.id];
       episodes[e.id] = old == null ? e : old.mergedWith(e);
     }
+    _episodesDirty = true;
   }
 
   Future<void> refreshFeed(String feedUrl) async {
@@ -468,6 +499,7 @@ class Library extends ChangeNotifier {
         continue;
       }
       episodes.remove(e.id);
+      _episodesDirty = true;
     }
   }
 

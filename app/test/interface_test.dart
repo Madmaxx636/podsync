@@ -295,12 +295,16 @@ void main() {
       await tester.pump();
       expect(find.byTooltip('Download'), findsNothing);
 
-      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.tap(find.text('More'));
       await tester.pumpAndSettle();
       expect(find.text('Downloads'), findsOneWidget);
+      await tester.tapAt(const Offset(20, 100)); // dismiss the sheet
+      await tester.pumpAndSettle();
       rig.lib.setSetting('uiPhoneDownloads', false);
       rig.lib.setSetting('uiPhoneStats', false);
       await tester.pump();
+      await tester.tap(find.text('More'));
+      await tester.pumpAndSettle();
       expect(find.text('Downloads'), findsNothing);
       expect(find.text('Statistics'), findsNothing);
       expect(find.text('Settings'), findsOneWidget); // can never be hidden
@@ -315,9 +319,7 @@ void main() {
         size: size,
         ratio: 3,
       );
-      await tester.tap(find.byTooltip('Open navigation menu'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Episodes').last);
+      await tester.tap(find.text('Episodes'));
       await tester.pumpAndSettle();
       expect(find.text('Unplayed'), findsOneWidget);
       rig.lib.setSetting('uiPhoneFilters', false);

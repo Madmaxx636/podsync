@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Phone redesign after AntennaPod, one look for both kinds of screen. Colour phones get the bottom bar (Queue, Episodes, Podcasts, Add, More) with counts; e-ink gets browser-style tabs along the top (the selected tab is outlined and open at the bottom), black and white, no animation, paged. Both share the big screen titles, the episode rows (date, size, bold title, time or progress with elapsed and remaining, big round play button), the mini player with a progress line along its top edge, and the player (collapse arrow, favourite, sleep timer, menu, cover, podcast and date, title, Shownotes button, seek bar, speed, rewind, round play button, forward, next).
+- E-ink buttons and chips are square-cornered instead of pills.
+- Automatic updates: Windows and Linux install a new version at start-up without asking (switch in Settings > Advanced and about); the server updates itself every night from GitHub (`scripts/auto-update.sh`, offered by the setup wizard).
+- The repository is public.
+- Desktop speed: the library's episodes are stored in their own file and rewritten only when they change (saving progress every few seconds used to rewrite everything); the position clock redraws twice a second instead of five times; the menu bar and details pane no longer rebuild on every tick; sorting a long episode list works out its sort keys once.
+
 ## 0.3.1 - 2026-11-04
 
 - Linux: a .deb package, `PodSync-linux-x64.deb` (`sudo apt install ./PodSync-linux-x64.deb`). It installs to /opt/podsync with a menu entry and icon, and pulls in GTK and libmpv. When PodSync was installed from the .deb, in-app updates download the new .deb, check it, and install it through the system password prompt. The tar.gz install still updates itself without a password.
