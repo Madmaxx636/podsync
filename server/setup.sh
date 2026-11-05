@@ -188,6 +188,12 @@ fi
 
 ./scripts/signup.sh "$([ $CLOSE = y ] && echo off || echo on)" --no-restart >/dev/null
 step "Building and starting the server"
+# A leftover "podsync" container from an earlier attempt (another folder) would block the name.
+stale=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' podsync 2>/dev/null || true)
+if [ -n "$stale" ] && [ "$stale" != "$PWD" ]; then
+  echo "Removing the old PodSync container left by an earlier attempt in $stale (its data volume is kept)."
+  docker rm -f podsync >/dev/null 2>&1 || true
+fi
 if [ $MODE = duckdns ]; then
   ./scripts/https.sh "$DOMAIN.duckdns.org" "$EMAIL"
 else

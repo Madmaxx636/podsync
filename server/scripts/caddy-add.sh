@@ -61,6 +61,12 @@ grep -qF "$HOST" "$cfg_host" && die "$HOST already appears in your Caddyfile. Pi
 
 # ---- 4. start PodSync only on this machine, on that port, trusting the proxy ----
 touch .env
+# A leftover "podsync" container from an earlier attempt (another folder) would block the name.
+stale=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' podsync 2>/dev/null || true)
+if [ -n "$stale" ] && [ "$stale" != "$PWD" ]; then
+  echo "Removing the old PodSync container left by an earlier attempt in $stale (its data volume is kept)."
+  docker rm -f podsync >/dev/null 2>&1 || true
+fi
 { grep -vE '^(PODSYNC_PORT|PODSYNC_BIND|PODSYNC_TRUST_PROXY|COMPOSE_FILE)=' .env || true
   echo "PODSYNC_PORT=$PORT"; echo "PODSYNC_BIND=127.0.0.1:"; echo "PODSYNC_TRUST_PROXY=true"; } > .env.new && mv .env.new .env
 rm -f docker-compose.https.yml Caddyfile
