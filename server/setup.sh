@@ -142,7 +142,7 @@ Docker containers publishing them:
 $boxes
 }
 This is usually the old gPodder server or the web server in front of it. Stop it first, for example:
-  ./scripts/remove-gpodder.sh        (removes gPodder)
+  ./scripts/kill-gpodder.sh        (removes gPodder)
   sudo systemctl disable --now nginx (or apache2)
 
 Then run ./setup.sh again. Nothing has been changed yet."
