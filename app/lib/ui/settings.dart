@@ -209,6 +209,33 @@ List<SettingsCategory> settingsCategories(
       ],
     ),
     SettingsCategory('Interface', 'Choose what is shown', Icons.tune, [
+      const HeaderItem('Start-up'),
+      choice<String>(
+        'startScreen',
+        'Open on',
+        'Which screen PodSync starts on',
+        android
+            ? {
+                'Up Next (default)': '',
+                'Episodes': 'episodes',
+                'Podcasts': 'podcasts',
+                'Add podcast': 'add',
+                'Downloads': 'downloads',
+                'Statistics': 'stats',
+                'Where I left off': 'last',
+              }
+            : {
+                'Episodes (default)': '',
+                'Podcasts': 'podcasts',
+                'Up Next': 'queue',
+                'Favorites': 'favorites',
+                'Recently Played': 'history',
+                'Downloads': 'downloads',
+                'Statistics': 'stats',
+                'Podcast Store': 'store',
+                'Where I left off': 'last',
+              },
+      ),
       if (!android) ...[
         const HeaderItem('Menu bar and toolbar'),
         tog(

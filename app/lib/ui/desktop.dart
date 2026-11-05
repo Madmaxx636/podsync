@@ -71,13 +71,32 @@ class DesktopShell extends StatefulWidget {
 
 class _DesktopShellState extends State<DesktopShell> {
   // Places visited, like a browser: back and forward move along it, going somewhere new cuts off the forward part.
-  final List<_Source> _history = [const _Library('episodes')];
+  late final List<_Source> _history = [_startSource(context.read<Library>())];
   int _pos = 0;
   String filter = '';
   final FocusNode _searchFocus = FocusNode();
   Episode?
   _detailEpisode; // the one episode selected in the table, for the details pane
   EpisodeFilter _episodeFilter = EpisodeFilter.all;
+
+  /// The place PodSync opens on: the person's choice (Settings > Interface > Open on), or the
+  /// one they left from, or Episodes.
+  static _Source _startSource(Library lib) {
+    final want = lib.settings.startScreen == 'last'
+        ? lib.settings.lastScreen
+        : lib.settings.startScreen;
+    if (want == 'store' || want == 'store:') return const _Store();
+    const kinds = {
+      'episodes',
+      'podcasts',
+      'queue',
+      'favorites',
+      'history',
+      'downloads',
+      'stats',
+    };
+    return kinds.contains(want) ? _Library(want) : const _Library('episodes');
+  }
 
   _Source get source => _history[_pos];
   bool get canGoBack => _pos > 0;
@@ -99,6 +118,11 @@ class _DesktopShellState extends State<DesktopShell> {
       _detailEpisode = null;
       _episodeFilter = EpisodeFilter.all;
     });
+    final lib = context.read<Library>();
+    if (lib.settings.startScreen == 'last') {
+      if (s is _Library) lib.setSetting('lastScreen', s.kind);
+      if (s is _Store) lib.setSetting('lastScreen', 'store');
+    }
   }
 
   void _back() {

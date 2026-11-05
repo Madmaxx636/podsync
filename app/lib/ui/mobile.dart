@@ -58,9 +58,21 @@ class MobileShell extends StatefulWidget {
 }
 
 class _MobileShellState extends State<MobileShell> {
-  _Section section = _Section.queue;
+  late _Section section = _startSection(context.read<Library>());
   final List<_Section> _previous =
       []; // sections visited before this one, for the back button
+
+  /// The screen PodSync opens on: the person's choice (Settings > Interface > Open on), or the
+  /// one they left from, or Up Next.
+  static _Section _startSection(Library lib) {
+    final want = lib.settings.startScreen == 'last'
+        ? lib.settings.lastScreen
+        : lib.settings.startScreen;
+    for (final s in _Section.values) {
+      if (s.name == want && s != _Section.settings) return s;
+    }
+    return _Section.queue;
+  }
 
   void _select(_Section s) {
     if (s == section) return;
@@ -68,6 +80,10 @@ class _MobileShellState extends State<MobileShell> {
       _previous.add(section);
       section = s;
     });
+    final lib = context.read<Library>();
+    if (lib.settings.startScreen == 'last') {
+      lib.setSetting('lastScreen', s.name);
+    }
   }
 
   @override

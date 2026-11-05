@@ -22,6 +22,9 @@ class AppSettings {
     'notifyNowPlaying': false, // ... when the next episode starts
     'taskbarControls':
         true, // Windows: play, pause and skip buttons in the taskbar preview
+    // Which screen PodSync opens on (this device): '' = the usual one, 'last' = where you left off
+    'startScreen': '',
+    'lastScreen': '', // remembered when startScreen is 'last'
     // Updates (this device)
     'updateCheck': true,
     'updateAuto': true, // Windows and Linux: install a found update at start-up without asking
@@ -193,6 +196,8 @@ class AppSettings {
   bool get notifyDownloads => _get('notifyDownloads');
   bool get notifyNowPlaying => _get('notifyNowPlaying');
   bool get taskbarControls => _get('taskbarControls');
+  String get startScreen => _get('startScreen');
+  String get lastScreen => _get('lastScreen');
   bool get updateCheck => _get('updateCheck');
   bool get updateAuto => _get('updateAuto');
   String get updateSkipped => _get('updateSkipped');

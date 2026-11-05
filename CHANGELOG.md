@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.4 - 2026-11-05
+
+- New setting, Settings > Interface > Open on: choose the screen PodSync starts on. Phone: Up Next (default), Episodes, Podcasts, Add podcast, Downloads, Statistics. Desktop: Episodes (default), Podcasts, Up Next, Favorites, Recently Played, Downloads, Statistics, Podcast Store. Both also offer "Where I left off", which reopens the last screen you used. It is per device.
+
 ## 0.5.3 - 2026-11-05
 
 - Desktop: headphone and keyboard media buttons (Play/Pause, Next, Previous, Stop) now control PodSync on Windows through a direct key hook, so they work even when Windows would have handed them to a browser. PodSync takes the key only while it is what you are listening to (playing, or paused in the last half hour) and leaves it for other apps otherwise. The system media overlay and Linux's MPRIS controls stay as before.
