@@ -56,8 +56,24 @@ if [ -z "$HOST" ]; then
   read -r -p "Address for PodSync (no https://): " HOST
 fi
 HOST="${HOST#http://}"; HOST="${HOST#https://}"; HOST="${HOST%%/*}"; HOST="$(echo "$HOST" | tr -d '[:space:]')"
+[[ "$HOST" == *.* ]] || HOST="$HOST.duckdns.org"      # "mcpodsync" means mcpodsync.duckdns.org
 [[ "$HOST" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$ ]] || die "\"$HOST\" is not a valid address like podsync.myname.duckdns.org"
-grep -qF "$HOST" "$cfg_host" && die "$HOST already appears in your Caddyfile. Pick a different name, or edit that block by hand."
+REPLACE=0
+if grep -qF "$HOST" "$cfg_host"; then
+  # Find the site block that starts with this name (only simple one-name blocks are taken over).
+  start=$(grep -nE "^${HOST//./\\.}[[:space:]]*\{" "$cfg_host" | head -1 | cut -d: -f1 || true)
+  [ -n "$start" ] || die "$HOST appears in your Caddyfile but not as a simple block I can safely take over. Send me that part of the file."
+  end=$(awk -v s="$start" 'NR>=s { n=gsub(/\{/,"{"); m=gsub(/\}/,"}"); d+=n-m; if (NR>=s && d==0) { print NR; exit } }' "$cfg_host")
+  [ -n "$end" ] || die "could not find the end of the $HOST block."
+  say ""
+  say "$HOST already exists in your Caddyfile. This is its current block:"
+  say "-----"; sed -n "${start},${end}p" "$cfg_host"; say "-----"
+  say "PodSync will TAKE OVER this name: that block is replaced and the name then opens PodSync."
+  say "(A backup of the whole file is made first.)"
+  read -r -p "Type yes to replace it: " a
+  [ "$a" = yes ] || die "cancelled, nothing was changed."
+  REPLACE=1
+fi
 
 # ---- 4. start PodSync only on this machine, on that port, trusting the proxy ----
 touch .env
@@ -86,7 +102,13 @@ fi
 bak="$cfg_host.bak-$(date +%F-%H%M%S)"
 $SUDO cp -p "$cfg_host" "$bak"
 say "Backup of your Caddyfile: $bak"
-printf '\n# PodSync (added by caddy-add.sh)\n%s {\n\treverse_proxy %s\n}\n' "$HOST" "$upstream" | $SUDO tee -a "$cfg_host" >/dev/null
+block=$(printf '# PodSync (added by caddy-add.sh)\n%s {\n\treverse_proxy %s\n}\n' "$HOST" "$upstream")
+if [ $REPLACE = 1 ]; then
+  { sed -n "1,$((start-1))p" "$cfg_host"; printf '%s\n' "$block"; sed -n "$((end+1)),\$p" "$cfg_host"; } > "$bak.new"
+  $SUDO cp "$bak.new" "$cfg_host"; rm -f "$bak.new"
+else
+  printf '\n%s\n' "$block" | $SUDO tee -a "$cfg_host" >/dev/null
+fi
 rollback() { say "Putting your original Caddyfile back."; $SUDO cp -p "$bak" "$cfg_host"; docker exec "$caddy" caddy reload --config "$cfg_in" --adapter caddyfile >/dev/null 2>&1 || true; }
 if ! out=$(docker exec "$caddy" caddy validate --config "$cfg_in" --adapter caddyfile 2>&1); then
   say "$out" | tail -8; rollback; die "Caddy rejected the new block (nothing changed)."
