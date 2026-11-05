@@ -82,10 +82,24 @@ if [ $MODE = duckdns ]; then
   3. An internet connection that is not behind CGNAT (if your router's WAN address differs from what a 'what is my IP' site shows, this will not work; use Tailscale instead).
 
 The name will point at your home connection and the server will be reachable by anyone who knows it, so sign-ups get switched off at the end."
-  DOMAIN=$(ask "Your DuckDNS name (e.g. myname or myname.duckdns.org)" "")
-  DOMAIN="${DOMAIN%.duckdns.org}"; [ -n "$DOMAIN" ] || die "No name given."
-  TOKEN=$(secret "Your DuckDNS token")
-  [ -n "$TOKEN" ] || die "No token given."
+  while :; do
+    DOMAIN=$(ask "Your DuckDNS name (just the first part, e.g. myname)" "$DOMAIN")
+    DOMAIN="$(echo "$DOMAIN" | tr -d '[:space:]')"; DOMAIN="${DOMAIN%.duckdns.org}"
+    TOKEN=$(secret "Your DuckDNS token (the long code at the top of duckdns.org when you are logged in)")
+    TOKEN="$(echo "$TOKEN" | tr -d '[:space:]')"
+    if [ -z "$DOMAIN" ] || [ -z "$TOKEN" ]; then msg "Both the name and the token are needed."; continue; fi
+    # Check it right away; this also points the name at this connection, which is the goal.
+    reply=$(DUCKDNS_DOMAIN="$DOMAIN" DUCKDNS_TOKEN="$TOKEN" ./scripts/duckdns.sh 2>&1 | tail -1 || true)
+    [ "$reply" = OK ] && break
+    msg "DuckDNS answered \"$reply\" instead of OK.
+
+\"KO\" means the name and token do not belong together. Check that:
+  - the name is listed under the account that owns the token
+  - you copied the whole token, with nothing extra
+  - you entered only the first part of the name (myname, not myname.duckdns.org)
+
+Let's try again."
+  done
   EMAIL=$(ask "Email for the HTTPS certificate (Let's Encrypt only uses it for expiry warnings)" "")
   [ -n "$EMAIL" ] || die "No email given."
 fi
@@ -116,10 +130,8 @@ yesno "$SUMMARY" y || { echo "Cancelled, nothing changed."; exit 0; }
 # ---- 4. do it ---------------------------------------------------------------------------------
 export PODSYNC_PORT="$PORT"
 if [ $MODE = duckdns ]; then
-  step "Pointing $DOMAIN.duckdns.org at this connection"
+  step "Keeping $DOMAIN.duckdns.org up to date"
   export DUCKDNS_DOMAIN="$DOMAIN" DUCKDNS_TOKEN="$TOKEN"
-  reply=$(./scripts/duckdns.sh | tail -1)
-  [ "$reply" = OK ] || die "DuckDNS answered \"$reply\" instead of OK. Check the name and token."
   [ -n "${PODSYNC_NO_CRON:-}" ] || ./scripts/duckdns.sh --cron
 fi
 
