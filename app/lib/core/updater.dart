@@ -55,7 +55,11 @@ bool isNewerVersion(String a, String b) {
 String? updateAssetName() {
   if (Platform.isWindows) return 'PodSync-Setup-x64.exe';
   if (Platform.isAndroid) return 'PodSync-android.apk';
-  if (Platform.isLinux) return 'PodSync-linux-x64.tar.gz';
+  if (Platform.isLinux) {
+    return _installedFromDeb
+        ? 'PodSync-linux-x64.deb'
+        : 'PodSync-linux-x64.tar.gz';
+  }
   return null;
 }
 
@@ -267,6 +271,10 @@ class UpdateController extends ChangeNotifier {
 
 const _channel = MethodChannel('dev.podsync/update');
 
+/// True when PodSync was installed from the .deb (it lives in /opt/podsync, which only root can write).
+bool get _installedFromDeb =>
+    Platform.isLinux && Platform.resolvedExecutable.startsWith('/opt/podsync/');
+
 /// Where the Linux build is installed: the folder holding the running program.
 Directory get _linuxInstallDir => File(Platform.resolvedExecutable).parent;
 
@@ -277,7 +285,12 @@ Future<String?> _platformPrepare() async {
         ? null
         : 'Allow PodSync to install updates in the settings page that just opened, then tap Install again.';
   }
-  if (Platform.isLinux) {
+  if (Platform.isLinux && _installedFromDeb) {
+    final r = await Process.run('which', ['pkexec']);
+    if (r.exitCode != 0) {
+      return 'Installing needs administrator rights and pkexec is missing. Download the .deb from the releases page and run: sudo apt install ./PodSync-linux-x64.deb';
+    }
+  } else if (Platform.isLinux) {
     try {
       final probe = File(p.join(_linuxInstallDir.path, '.update-probe'));
       probe.writeAsStringSync('');
@@ -304,6 +317,19 @@ Future<void> _platformInstall(String path) async {
     exit(0);
   } else if (Platform.isAndroid) {
     await _channel.invokeMethod<void>('install', {'path': path});
+  } else if (Platform.isLinux && path.endsWith('.deb')) {
+    // apt installs the package and any libraries it needs; pkexec asks for the password.
+    final r = await Process.run('pkexec', ['apt-get', 'install', '-y', path]);
+    if (r.exitCode != 0) {
+      throw ProcessException('apt-get', [], '${r.stderr}'.trim(), r.exitCode);
+    }
+    await Process.start(
+      '/usr/bin/podsync',
+      const [],
+      mode: ProcessStartMode.detached,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    exit(0);
   } else if (Platform.isLinux) {
     final dir = _linuxInstallDir.path;
     final r = await Process.run('tar', [

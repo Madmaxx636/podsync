@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 - 2026-11-04
+
+- Linux: a .deb package, `PodSync-linux-x64.deb` (`sudo apt install ./PodSync-linux-x64.deb`). It installs to /opt/podsync with a menu entry and icon, and pulls in GTK and libmpv. When PodSync was installed from the .deb, in-app updates download the new .deb, check it, and install it through the system password prompt. The tar.gz install still updates itself without a password.
+
 ## 0.3.0 - 2026-11-04
 
 - Linux build: `PodSync-linux-x64.tar.gz` with an install script (installs for your user, adds a menu entry) and in-app updates that unpack the new version over the old one. PodSync needs libmpv for audio (`sudo apt install libmpv2`).

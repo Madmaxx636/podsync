@@ -43,4 +43,6 @@ The apps look for new versions on github.com/Madmaxx636/podsync-releases (Settin
 
 ## Linux
 
-Download `PodSync-linux-x64.tar.gz`, unpack it and run `podsync/install.sh`. It installs for your user (no root) and adds a menu entry. PodSync plays audio with libmpv (`sudo apt install libmpv2` on Debian and Ubuntu). Updates then install from inside the app.
+**Debian/Ubuntu:** download `PodSync-linux-x64.deb` and run `sudo apt install ./PodSync-linux-x64.deb` (it pulls in GTK and libmpv). In-app updates then ask for your password through the system prompt and install the new .deb.
+
+**Any distribution:** download `PodSync-linux-x64.tar.gz`, unpack it and run `podsync/install.sh`. It installs for your user (no root) and adds a menu entry. PodSync plays audio with libmpv (`sudo apt install libmpv2` on Debian and Ubuntu). Updates then install from inside the app.

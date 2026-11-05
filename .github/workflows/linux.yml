@@ -34,6 +34,9 @@ jobs:
           ./tools/package-linux.sh PodSync-linux-x64.tar.gz
           sha256sum PodSync-linux-x64.tar.gz > PodSync-linux-x64.tar.gz.sha256
           ls -la PodSync-linux-x64.tar.gz
+          ./tools/package-deb.sh PodSync-linux-x64.deb
+          sha256sum PodSync-linux-x64.deb > PodSync-linux-x64.deb.sha256
+          dpkg-deb --info PodSync-linux-x64.deb
 
       # Prove the archive installs: unpack, run the install script into a scratch home, check the files.
       - name: Test the install script
@@ -46,9 +49,22 @@ jobs:
           grep -q "Exec=$RUNNER_TEMP/home/data/podsync/podsync" "$RUNNER_TEMP/home/data/applications/podsync.desktop"
           ldd "$RUNNER_TEMP/home/data/podsync/podsync" | grep "not found" || echo "all libraries resolved"
 
+      # Prove the .deb installs: apt resolves its libraries, then the program must find them all.
+      - name: Test the .deb
+        working-directory: .
+        run: |
+          sudo apt-get install -y ./PodSync-linux-x64.deb
+          test -x /usr/bin/podsync
+          test -f /usr/share/applications/podsync.desktop
+          ldd /opt/podsync/podsync | grep "not found" && exit 1 || echo "all libraries resolved"
+          sudo apt-get remove -y podsync
+          test ! -e /opt/podsync/podsync
+
       - uses: actions/upload-artifact@v4
         with:
           name: PodSync-linux
           path: |
             PodSync-linux-x64.tar.gz
             PodSync-linux-x64.tar.gz.sha256
+            PodSync-linux-x64.deb
+            PodSync-linux-x64.deb.sha256

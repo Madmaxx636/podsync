@@ -20,7 +20,7 @@ for wf in "Windows build" "Android build" "Linux build"; do
   gh run download "$id" -D "$work/$id"
 done
 mkdir "$work/out"
-for f in PodSync-Setup-x64.exe PodSync-android.apk PodSync-linux-x64.tar.gz; do
+for f in PodSync-Setup-x64.exe PodSync-android.apk PodSync-linux-x64.tar.gz PodSync-linux-x64.deb; do
   src=$(find "$work" -name "$f" | head -1)
   (cd "$(dirname "$src")" && sha256sum -c "$f.sha256")
   cp "$src" "$work/out/"
