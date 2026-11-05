@@ -11,6 +11,7 @@ class AppSettings {
     'dateStyle': 'mdy', // mdy | dmy | iso
     // Updates (this device)
     'updateCheck': true,
+    'updateAuto': true, // Windows and Linux: install a found update at start-up without asking
     'updateSkipped':
         '', // a version the person chose not to be told about again
     // Network (this device)
@@ -171,6 +172,7 @@ class AppSettings {
   int get requestTimeoutSec => _get('requestTimeoutSec');
   String get userAgent => _get('userAgent');
   bool get updateCheck => _get('updateCheck');
+  bool get updateAuto => _get('updateAuto');
   String get updateSkipped => _get('updateSkipped');
   bool get refreshOnLaunch => _get('refreshOnLaunch');
   int get refreshIntervalMin => _get('refreshIntervalMin');

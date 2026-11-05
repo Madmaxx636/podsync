@@ -167,6 +167,7 @@ done
 CLOSE=n; [ $MODE != home ] && CLOSE=y
 yesno "Close self-registration now? (Nobody else can make an account; you can add people later with ./scripts/adduser.sh.)" $CLOSE && CLOSE=y || CLOSE=n
 yesno "Back up the data every night at 03:30 (kept in ./backups, newest 14)?" y && BACKUP=y || BACKUP=n
+yesno "Update the server automatically? It checks GitHub every night at 04:15, backs up first, and only installs a newer release." y && AUTOUP=y || AUTOUP=n
 
 SUMMARY="Ready to set up:
 
@@ -174,6 +175,7 @@ SUMMARY="Ready to set up:
   Account:     $USERNAME
   Sign-up:     $([ $CLOSE = y ] && echo closed || echo open)
   Backups:     $([ $BACKUP = y ] && echo nightly || echo no)
+  Auto-update: $([ $AUTOUP = y ] && echo nightly || echo no)
 
 Start now?"
 yesno "$SUMMARY" y || { echo "Cancelled, nothing changed."; exit 0; }
@@ -225,6 +227,7 @@ else
   PODSYNC_PASSWORD="$PASS" ./scripts/adduser.sh "$USERNAME"
 fi
 [ $BACKUP = y ] && [ -z "${PODSYNC_NO_CRON:-}" ] && ./scripts/backup.sh --cron
+[ $AUTOUP = y ] && [ -z "${PODSYNC_NO_CRON:-}" ] && ./scripts/auto-update.sh --cron
 
 ip=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [ $MODE = caddy ]; then

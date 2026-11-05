@@ -23,7 +23,7 @@ class _UpdateGateState extends State<UpdateGate> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _run());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _run(startup: true));
     _daily = Timer.periodic(const Duration(hours: 24), (_) => _run());
   }
 
@@ -33,7 +33,7 @@ class _UpdateGateState extends State<UpdateGate> {
     super.dispose();
   }
 
-  Future<void> _run() async {
+  Future<void> _run({bool startup = false}) async {
     if (!mounted) return;
     final up = context.read<UpdateController>();
     final lib = context.read<Library>();
@@ -41,7 +41,15 @@ class _UpdateGateState extends State<UpdateGate> {
     if (!lib.settings.updateCheck) return;
     await up.check();
     if (!mounted || !up.takeOffer()) return;
-    await showUpdateDialog(context);
+    // Only at start-up, so an update never restarts the app in the middle of listening.
+    if (startup &&
+        lib.settings.updateAuto &&
+        !Platform.isAndroid &&
+        up.canInstall) {
+      await up.install();
+      if (up.error == null) return; // the app restarts itself
+    }
+    if (mounted) await showUpdateDialog(context);
   }
 
   @override

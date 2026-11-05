@@ -772,6 +772,12 @@ List<SettingsCategory> settingsCategories(
           'Check for updates',
           'Looks for a new release when the app opens',
         ),
+        if (!android)
+          tog(
+            'updateAuto',
+            'Install updates automatically',
+            'When PodSync opens and a newer version exists, install it and restart without asking (Android always asks you to confirm)',
+          ),
         if (updates != null)
           ActionItem(
             'Check for updates now',
