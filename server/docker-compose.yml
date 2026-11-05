@@ -8,13 +8,13 @@ services:
     container_name: podsync
     restart: unless-stopped
     ports:
-      - "${PODSYNC_PORT:-8080}:8080"
+      - "${PODSYNC_BIND:-}${PODSYNC_PORT:-8080}:8080"
     environment:
       # Let people create their own accounts. Turn this off ("false") once everyone has one;
       # you can still add people with `podsync-server user add`.
       PODSYNC_SIGNUP: "${PODSYNC_SIGNUP:-true}"
       # Only "true" if the server sits behind your own reverse proxy (see README).
-      PODSYNC_TRUST_PROXY: "false"
+      PODSYNC_TRUST_PROXY: "${PODSYNC_TRUST_PROXY:-false}"
     volumes:
       - podsync-data:/data
     healthcheck:

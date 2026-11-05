@@ -70,8 +70,12 @@ docker info >/dev/null 2>&1 || die "Docker is installed but not running, or your
 # ---- 2. how to reach it -----------------------------------------------------------------------
 MODE=$(choose "How will you use the server?" \
   home "At home only (simplest, plain http on your network)" \
-  duckdns "Also away from home, with my DuckDNS name (https)")
+  duckdns "Also away from home, with my DuckDNS name (https), I have no web server yet" \
+  caddy "I already run Caddy for other apps on this machine (add PodSync to it)")
 PORT=8080
+if [ $MODE = caddy ]; then
+  for p in $(seq 8095 8120); do ss -ltnH "sport = :$p" 2>/dev/null | grep -q . || { PORT=$p; break; }; done
+fi
 if [ $MODE = home ]; then PORT=$(ask "PORT NUMBER\n\nThe server will be at http://THIS-MACHINE:PORT. Press Enter to keep 8080 unless something else already uses it." "8080"); fi
 
 DOMAIN=""; TOKEN=""; EMAIL=""
@@ -160,13 +164,13 @@ while :; do
   if [ ${#PASS} -lt 8 ] || [ ${#PASS} -gt 72 ]; then msg "Passwords are 8 to 72 characters."; continue; fi
   break
 done
-CLOSE=n; [ $MODE = duckdns ] && CLOSE=y
+CLOSE=n; [ $MODE != home ] && CLOSE=y
 yesno "Close self-registration now? (Nobody else can make an account; you can add people later with ./scripts/adduser.sh.)" $CLOSE && CLOSE=y || CLOSE=n
 yesno "Back up the data every night at 03:30 (kept in ./backups, newest 14)?" y && BACKUP=y || BACKUP=n
 
 SUMMARY="Ready to set up:
 
-  Mode:        $([ $MODE = home ] && echo "home network, port $PORT" || echo "https://$DOMAIN.duckdns.org")
+  Mode:        $(case $MODE in home) echo "home network, port $PORT";; caddy) echo "added to your existing Caddy (PodSync on 127.0.0.1:$PORT)";; *) echo "https://$DOMAIN.duckdns.org";; esac)
   Account:     $USERNAME
   Sign-up:     $([ $CLOSE = y ] && echo closed || echo open)
   Backups:     $([ $BACKUP = y ] && echo nightly || echo no)
@@ -187,11 +191,16 @@ step "Building and starting the server"
 if [ $MODE = duckdns ]; then
   ./scripts/https.sh "$DOMAIN.duckdns.org" "$EMAIL"
 else
+  if [ $MODE = caddy ]; then
+    # Only reachable from this machine; Caddy is the way in, so it may be trusted for client addresses.
+    { grep -vE '^(PODSYNC_PORT|PODSYNC_BIND|PODSYNC_TRUST_PROXY)=' .env 2>/dev/null || true
+      echo "PODSYNC_PORT=$PORT"; echo "PODSYNC_BIND=127.0.0.1:"; echo "PODSYNC_TRUST_PROXY=true"; } > .env.new && mv .env.new .env
+  fi
   docker compose up -d --build
 fi
 
 step "Waiting for the server"
-base="http://localhost:$PORT"; [ $MODE = duckdns ] && base="http://localhost:8080"
+base="http://127.0.0.1:$PORT"; [ $MODE = duckdns ] && base="http://localhost:8080"
 ok=0
 for _ in $(seq 1 45); do
   if [ $MODE = duckdns ]; then
@@ -212,7 +221,15 @@ fi
 [ $BACKUP = y ] && [ -z "${PODSYNC_NO_CRON:-}" ] && ./scripts/backup.sh --cron
 
 ip=$(hostname -I 2>/dev/null | awk '{print $1}')
-if [ $MODE = home ]; then
+if [ $MODE = caddy ]; then
+  step "Adding PodSync to your Caddy"
+  rm -f .caddy-host
+  ./scripts/caddy-add.sh --port "$PORT" || die "Adding PodSync to Caddy failed (the message above says why). PodSync itself is running on 127.0.0.1:$PORT and your Caddyfile was left as it was."
+fi
+if [ $MODE = caddy ]; then
+  URL="https://$(cat .caddy-host 2>/dev/null || echo YOUR-ADDRESS)"
+  EXTRA="This address goes through your existing Caddy, so it works wherever your other apps do."
+elif [ $MODE = home ]; then
   URL="http://${ip:-YOUR-SERVER-IP}:$PORT"
   EXTRA="Tip: give this machine a fixed IP in your router so the address never changes."
 else
