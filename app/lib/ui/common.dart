@@ -187,6 +187,8 @@ void showQueueUndo(BuildContext context, Library lib, String message) {
       SnackBar(
         content: Text(message),
         duration: const Duration(seconds: 6),
+        // A snackbar with an action stays up until dismissed unless told otherwise.
+        persist: false,
         action: SnackBarAction(label: 'Undo', onPressed: () => lib.undoQueue()),
       ),
     );

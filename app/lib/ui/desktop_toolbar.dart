@@ -17,8 +17,6 @@ class DesktopToolbar extends StatelessWidget {
     super.key,
     required this.onSearch,
     required this.searchFocus,
-    required this.onBack,
-    required this.onForward,
     required this.onGoToPodcast,
     required this.onCustomize,
     required this.onOpenDownloads,
@@ -26,8 +24,6 @@ class DesktopToolbar extends StatelessWidget {
 
   final ValueChanged<String> onSearch;
   final FocusNode searchFocus;
-  final VoidCallback? onBack; // null when there is nowhere to go back to
-  final VoidCallback? onForward;
   final ValueChanged<String> onGoToPodcast;
   final VoidCallback onCustomize; // opens Settings > Interface
   final VoidCallback onOpenDownloads; // the full Downloads screen
@@ -59,29 +55,17 @@ class DesktopToolbar extends StatelessWidget {
             showToolbarMenu(context, d.globalPosition, lib, onCustomize),
         child: Row(
           children: [
-            if (ui.uiBackForward) ...[
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new),
-                iconSize: 18,
-                tooltip: 'Go back',
-                onPressed: onBack,
-              ),
-              IconButton(
-                icon: const Icon(Icons.arrow_forward_ios),
-                iconSize: 18,
-                tooltip: 'Go forward',
-                onPressed: onForward,
-              ),
-              const SizedBox(width: 8),
-            ],
             if (ui.uiSkipButtons)
               IconButton(
                 icon: const Icon(Icons.fast_rewind),
+                iconSize: 28,
+                color: pal.text,
                 tooltip: 'Back ${lib.skipBackSec}s',
                 onPressed: player.skipBack,
               ),
             IconButton(
-              iconSize: 34,
+              iconSize: 40,
+              color: pal.text,
               tooltip: player.playing ? 'Pause' : 'Play',
               icon: Icon(player.playing ? Icons.pause : Icons.play_arrow),
               onPressed: player.current == null ? null : player.toggle,
@@ -89,6 +73,8 @@ class DesktopToolbar extends StatelessWidget {
             if (ui.uiSkipButtons) ...[
               IconButton(
                 icon: const Icon(Icons.fast_forward),
+                iconSize: 28,
+                color: pal.text,
                 tooltip: 'Forward ${lib.skipForwardSec}s',
                 onPressed: player.skipForward,
               ),
@@ -119,6 +105,7 @@ class DesktopToolbar extends StatelessWidget {
             const SizedBox(width: 4),
             if (ui.uiSpeed)
               TextButton(
+                style: TextButton.styleFrom(foregroundColor: pal.muted),
                 onPressed: () {
                   const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
                   final feed = player.current?.feedUrl ?? '';
@@ -194,8 +181,12 @@ class VolumeControl extends StatelessWidget {
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 3,
+                  activeTrackColor: Pal.of(context).muted,
+                  inactiveTrackColor: Pal.of(context).rule,
+                  thumbColor: Colors.white,
                   thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 5,
+                    enabledThumbRadius: 6,
+                    elevation: 2,
                   ),
                   overlayShape: SliderComponentShape.noOverlay,
                 ),
@@ -226,10 +217,10 @@ class Lcd extends StatelessWidget {
       (l) => l.settings.lcdRemaining,
     );
     return Container(
-      height: 48,
+      height: 52,
       decoration: BoxDecoration(
         color: pal.lcd,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(5),
         border: Border.all(color: pal.rule),
       ),
       child: e == null
@@ -241,7 +232,7 @@ class Lcd extends StatelessWidget {
             )
           : Row(
               children: [
-                Art(e.imageUrl, size: 46, radius: 0),
+                Art(e.imageUrl, size: 50, radius: 0),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -253,9 +244,9 @@ class Lcd extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 13,
                             height: 1.15,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                             color: pal.text,
                           ),
                         ),
@@ -864,6 +855,148 @@ class _DownloadsPanel extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The second toolbar row, like iTunes': back and forward as one joined control, a menu of the
+/// places in the library, and Library / Store tabs in the middle.
+class DesktopNavRow extends StatelessWidget {
+  const DesktopNavRow({
+    super.key,
+    required this.onBack,
+    required this.onForward,
+    required this.title,
+    required this.places,
+    required this.storeActive,
+    required this.onLibrary,
+    required this.onStore,
+  });
+  final VoidCallback? onBack; // null when there is nowhere to go back to
+  final VoidCallback? onForward;
+  final String title; // where you are now
+  final List<(String, VoidCallback)> places;
+  final bool storeActive;
+  final VoidCallback onLibrary;
+  final VoidCallback onStore;
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = Pal.of(context);
+    final showArrows = context.select<Library, bool>(
+      (l) => l.settings.uiBackForward,
+    );
+
+    Widget arrow(IconData icon, String tip, VoidCallback? onTap) => Tooltip(
+      message: tip,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: 30,
+          height: 26,
+          child: Icon(
+            icon,
+            size: 18,
+            color: onTap == null ? pal.rule : pal.text,
+          ),
+        ),
+      ),
+    );
+
+    Widget tab(String label, bool active, VoidCallback onTap) => InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(5),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        decoration: BoxDecoration(
+          color: active ? pal.selected : null,
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: active ? Colors.white : pal.text,
+          ),
+        ),
+      ),
+    );
+
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: pal.bg,
+        border: Border(bottom: BorderSide(color: pal.rule)),
+      ),
+      child: Row(
+        children: [
+          if (showArrows)
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: pal.rule),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Row(
+                children: [
+                  arrow(Icons.chevron_left, 'Go back', onBack),
+                  Container(width: 1, height: 26, color: pal.rule),
+                  arrow(Icons.chevron_right, 'Go forward', onForward),
+                ],
+              ),
+            ),
+          const SizedBox(width: 10),
+          PopupMenuButton<int>(
+            tooltip: 'Go to',
+            onSelected: (i) => places[i].$2(),
+            itemBuilder: (c) => [
+              for (var i = 0; i < places.length; i++)
+                PopupMenuItem(value: i, child: Text(places[i].$1)),
+            ],
+            child: Container(
+              height: 26,
+              padding: const EdgeInsets.only(left: 8, right: 4),
+              decoration: BoxDecoration(
+                border: Border.all(color: pal.rule),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.podcasts, size: 16, color: pal.muted),
+                  const SizedBox(width: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 140),
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, color: pal.text),
+                    ),
+                  ),
+                  Icon(Icons.unfold_more, size: 16, color: pal.muted),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  tab('Library', !storeActive, onLibrary),
+                  const SizedBox(width: 6),
+                  tab('Store', storeActive, onStore),
+                ],
+              ),
+            ),
+          ),
+          // Balances the left side so the tabs sit in the middle.
+          SizedBox(width: showArrows ? 210 : 150),
+        ],
       ),
     );
   }

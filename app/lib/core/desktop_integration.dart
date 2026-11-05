@@ -2,21 +2,31 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/painting.dart' show Size;
+import 'package:local_notifier/local_notifier.dart';
 import 'package:smtc_windows/smtc_windows.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:windows_taskbar/windows_taskbar.dart';
 
+import 'downloads.dart';
 import 'library.dart';
+import 'models.dart';
 import 'mpris.dart';
 import 'player.dart';
 
 /// Windows and Linux system integration: a tray icon, closing to the tray, starting at login, and
 /// the system's media controls (media keys, now-playing widgets).
 class DesktopIntegration with TrayListener, WindowListener {
-  DesktopIntegration(this.lib, this.player);
+  DesktopIntegration(this.lib, this.player, {this.downloads});
 
   final Library lib;
   final PlayerController player;
+  final DownloadManager? downloads;
+
+  bool _focused = true;
+  bool _notifierReady = false;
+  String _lastNotifiedId = '';
+  DateTime _lastTaskbarProgress = DateTime.fromMillisecondsSinceEpoch(0);
 
   bool _trayOn = false;
   SMTCWindows? _smtc;
@@ -55,6 +65,13 @@ class DesktopIntegration with TrayListener, WindowListener {
     trayManager.addListener(this);
     lib.addListener(_onSettings);
     player.addListener(_onPlayer);
+    // Notifications: new episodes found by a refresh, and finished downloads.
+    final previous = lib.onNewEpisodes;
+    lib.onNewEpisodes = (podcast, arrivals) {
+      previous?.call(podcast, arrivals);
+      _notifyNew(podcast, arrivals);
+    };
+    downloads?.onFinished = _notifyDownloaded;
     await _applySettings(first: true);
   }
 
@@ -63,7 +80,7 @@ class DesktopIntegration with TrayListener, WindowListener {
   void _onSettings() {
     final s = lib.settings;
     final key =
-        '${s.trayIcon}|${s.closeToTray}|${s.startAtLogin}|${s.startMinimized}|${s.mediaControls}';
+        '${s.trayIcon}|${s.closeToTray}|${s.startAtLogin}|${s.startMinimized}|${s.mediaControls}|${s.taskbarControls}';
     if (key == _settingsKey) return;
     _applySettings();
   }
@@ -71,13 +88,16 @@ class DesktopIntegration with TrayListener, WindowListener {
   Future<void> _applySettings({bool first = false}) async {
     final s = lib.settings;
     _settingsKey =
-        '${s.trayIcon}|${s.closeToTray}|${s.startAtLogin}|${s.startMinimized}|${s.mediaControls}';
+        '${s.trayIcon}|${s.closeToTray}|${s.startAtLogin}|${s.startMinimized}|${s.mediaControls}|${s.taskbarControls}';
     try {
       if (s.trayIcon && !_trayOn) await _showTray();
       if (!s.trayIcon && _trayOn) await _hideTray();
       // Without a tray icon there would be no way back to a hidden window, so closing quits.
       await windowManager.setPreventClose(s.closeToTray && _trayOn);
       await _setStartAtLogin(s.startAtLogin);
+      await _setupNotifier();
+      _taskbarKey = '';
+      _updateTaskbar();
       if (s.mediaControls) {
         await _startMedia();
       } else {
@@ -93,6 +113,12 @@ class DesktopIntegration with TrayListener, WindowListener {
   // ---- window and tray -----------------------------------------------------------------
 
   @override
+  void onWindowFocus() => _focused = true;
+
+  @override
+  void onWindowBlur() => _focused = false;
+
+  @override
   void onWindowClose() async {
     if (lib.settings.closeToTray && _trayOn) {
       await windowManager.hide();
@@ -106,6 +132,8 @@ class DesktopIntegration with TrayListener, WindowListener {
     await windowManager.setSkipTaskbar(false);
     await windowManager.show();
     await windowManager.focus();
+    _taskbarKey = '';
+    _updateTaskbar();
   }
 
   Future<void> quit() async {
@@ -276,9 +304,119 @@ class DesktopIntegration with TrayListener, WindowListener {
   void _onPlayer() {
     final key = '${player.current?.id}|${player.playing}';
     if (key == _playerKey) return;
+    final episodeChanged = player.current?.id != _lastNotifiedId;
     _playerKey = key;
     _updateTrayMenu();
     _updateSmtc();
+    _updateTaskbar();
+    final e = player.current;
+    if (e != null && episodeChanged && player.playing) {
+      _lastNotifiedId = e.id;
+      if (lib.settings.notifyNowPlaying && !_focused) {
+        _notify('Now playing', '${e.title}\n${lib.podcastTitle(e.feedUrl)}');
+      }
+    }
+  }
+
+  // ---- notifications -------------------------------------------------------------------
+
+  Future<void> _setupNotifier() async {
+    if (_notifierReady) return;
+    try {
+      await localNotifier.setup(
+        appName: 'PodSync',
+        shortcutPolicy: ShortcutPolicy.requireCreate,
+      );
+      _notifierReady = true;
+    } catch (_) {}
+  }
+
+  void _notify(String title, String body) {
+    if (!_notifierReady) return;
+    final n = LocalNotification(title: title, body: body);
+    n.onClick = showWindow;
+    n.show();
+  }
+
+  void _notifyNew(Podcast podcast, List<Episode> arrivals) {
+    if (!lib.settings.notifyNewEpisodes || _focused || arrivals.isEmpty) return;
+    final first = arrivals.first.title;
+    _notify(
+      podcast.displayTitle,
+      arrivals.length == 1 ? first : '$first\nand ${arrivals.length - 1} more',
+    );
+  }
+
+  void _notifyDownloaded(String id) {
+    final e = lib.episodes[id];
+    if (e == null || !lib.settings.notifyDownloads || _focused) return;
+    _notify('Download finished', e.title);
+  }
+
+  // ---- Windows taskbar: buttons in the hover preview, progress on the icon ------------
+
+  String _taskbarKey = '';
+
+  Future<void> _updateTaskbar() async {
+    if (!Platform.isWindows) return;
+    try {
+      if (!lib.settings.taskbarControls) {
+        if (_taskbarKey != 'off') {
+          _taskbarKey = 'off';
+          await WindowsTaskbar.resetThumbnailToolbar();
+          await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
+        }
+        return;
+      }
+      final e = player.current;
+      final key = '${e?.id}|${player.playing}';
+      if (key != _taskbarKey) {
+        _taskbarKey = key;
+        final has = e != null;
+        await WindowsTaskbar.setThumbnailToolbar([
+          ThumbnailToolbarButton(
+            ThumbnailToolbarAssetIcon('assets/icon/tb_prev.ico'),
+            'Skip back',
+            player.skipBack,
+            mode: has ? 0 : ThumbnailToolbarButtonMode.disabled,
+          ),
+          ThumbnailToolbarButton(
+            ThumbnailToolbarAssetIcon(
+              player.playing
+                  ? 'assets/icon/tb_pause.ico'
+                  : 'assets/icon/tb_play.ico',
+            ),
+            player.playing ? 'Pause' : 'Play',
+            () {
+              if (player.current != null) player.toggle();
+            },
+            mode: has ? 0 : ThumbnailToolbarButtonMode.disabled,
+          ),
+          ThumbnailToolbarButton(
+            ThumbnailToolbarAssetIcon('assets/icon/tb_next.ico'),
+            'Next in Up Next',
+            player.next,
+          ),
+        ]);
+        if (e != null) await WindowsTaskbar.setThumbnailTooltip(e.title);
+      }
+      // Progress along the taskbar icon, about once a second.
+      final now = DateTime.now();
+      final total = player.duration.inMilliseconds;
+      if (e != null &&
+          total > 0 &&
+          now.difference(_lastTaskbarProgress) > const Duration(seconds: 1)) {
+        _lastTaskbarProgress = now;
+        await WindowsTaskbar.setProgressMode(
+          player.playing
+              ? TaskbarProgressMode.normal
+              : TaskbarProgressMode.paused,
+        );
+        await WindowsTaskbar.setProgress(player.position.inMilliseconds, total);
+      } else if (e == null) {
+        await WindowsTaskbar.setProgressMode(TaskbarProgressMode.noProgress);
+      }
+    } catch (_) {}
   }
 
   Future<void> _updateSmtc() async {

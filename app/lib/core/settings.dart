@@ -16,6 +16,12 @@ class AppSettings {
     'startAtLogin': false,
     'startMinimized': true, // when started at login, stay in the tray instead of opening a window
     'mediaControls': true, // media keys and the system's now-playing controls
+    'notifyNewEpisodes':
+        true, // a desktop notification when a refresh finds new episodes
+    'notifyDownloads': true, // ... when a download finishes
+    'notifyNowPlaying': false, // ... when the next episode starts
+    'taskbarControls':
+        true, // Windows: play, pause and skip buttons in the taskbar preview
     // Updates (this device)
     'updateCheck': true,
     'updateAuto': true, // Windows and Linux: install a found update at start-up without asking
@@ -183,6 +189,10 @@ class AppSettings {
   bool get startAtLogin => _get('startAtLogin');
   bool get startMinimized => _get('startMinimized');
   bool get mediaControls => _get('mediaControls');
+  bool get notifyNewEpisodes => _get('notifyNewEpisodes');
+  bool get notifyDownloads => _get('notifyDownloads');
+  bool get notifyNowPlaying => _get('notifyNowPlaying');
+  bool get taskbarControls => _get('taskbarControls');
   bool get updateCheck => _get('updateCheck');
   bool get updateAuto => _get('updateAuto');
   String get updateSkipped => _get('updateSkipped');

@@ -199,11 +199,33 @@ class _DesktopShellState extends State<DesktopShell> {
                 DesktopToolbar(
                   onSearch: (v) => setState(() => filter = v),
                   searchFocus: _searchFocus,
-                  onBack: canGoBack ? _back : null,
-                  onForward: canGoForward ? _forward : null,
                   onGoToPodcast: (f) => _go(_Show(f)),
                   onCustomize: _customize,
                   onOpenDownloads: () => _goTo('downloads'),
+                ),
+                DesktopNavRow(
+                  onBack: canGoBack ? _back : null,
+                  onForward: canGoForward ? _forward : null,
+                  title: _placeName(lib),
+                  places: [
+                    for (final (label, kind) in const [
+                      ('Episodes', 'episodes'),
+                      ('Podcasts', 'podcasts'),
+                      ('Up Next', 'queue'),
+                      ('Favorites', 'favorites'),
+                      ('Recently Played', 'history'),
+                      ('Downloads', 'downloads'),
+                      ('Statistics', 'stats'),
+                    ])
+                      (label, () => _goTo(kind)),
+                  ],
+                  storeActive: source is _Store,
+                  onLibrary: () {
+                    if (source is _Store || source is _Settings) {
+                      _go(const _Library('episodes'));
+                    }
+                  },
+                  onStore: () => _go(const _Store()),
                 ),
                 Expanded(
                   child: Row(
@@ -248,6 +270,23 @@ class _DesktopShellState extends State<DesktopShell> {
         ),
       ),
     );
+  }
+
+  /// The name of where you are, for the menu in the second toolbar row.
+  String _placeName(Library lib) {
+    final s = source;
+    if (s is _Store) return 'Podcast Store';
+    if (s is _Settings) return 'Settings';
+    if (s is _Show) return lib.podcastTitle(s.feedUrl);
+    return switch ((s as _Library).kind) {
+      'podcasts' => 'Podcasts',
+      'queue' => 'Up Next',
+      'favorites' => 'Favorites',
+      'history' => 'Recently Played',
+      'downloads' => 'Downloads',
+      'stats' => 'Statistics',
+      _ => 'Episodes',
+    };
   }
 
   String _status(Library lib) {
@@ -662,7 +701,7 @@ class _Sidebar extends StatelessWidget {
                   showSidebarMenu(context, d.globalPosition, lib, onCustomize),
               child: ListView(
                 children: [
-                  if (anyLibrary) header('LIBRARY'),
+                  if (anyLibrary) header('Library'),
                   if (ui.uiNavPodcasts)
                     item(
                       Icons.podcasts,
@@ -717,18 +756,18 @@ class _Sidebar extends StatelessWidget {
                       const _Library('stats'),
                     ),
                   if (ui.uiNavStore) ...[
-                    header('PODCAST STORE'),
+                    header('Podcast Store'),
                     item(Icons.search, 'Find Podcasts', const _Store()),
                   ],
                   // Settings is always listed, so there is always a way back to these switches.
-                  header('SETTINGS'),
+                  header('Settings'),
                   item(
                     lib.syncEnabled ? Icons.cloud_done : Icons.settings,
                     'Settings and Sync',
                     const _Settings(),
                   ),
                   if (ui.uiNavSubscriptions && lib.subscriptions.isNotEmpty)
-                    header('SUBSCRIPTIONS'),
+                    header('Subscriptions'),
                   if (ui.uiNavSubscriptions)
                     for (final p in lib.subscriptions)
                       item(

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 - 2026-11-05
+
+- Fixed: the "Up Next cleared" (and "sorted") banner with an Undo button never went away. It now disappears after six seconds.
+- Windows: playback buttons (previous, play/pause, next) in the taskbar preview when you hover over PodSync, plus a progress bar on the taskbar icon. Desktop notifications for new episodes, finished downloads and (optionally) when the next episode starts, shown only while PodSync is not in front. All of it can be switched off in Settings > System.
+- Desktop look closer to iTunes 12: a second toolbar row with the joined back/forward control, a menu of places and Library / Store tabs in blue; a joined segmented filter control instead of chips; larger transport buttons and a grey volume slider; a neutral grey sidebar with Title-case headings.
+
 ## 0.4.0 - 2026-11-05
 
 - Phone redesign after AntennaPod, one look for both kinds of screen. Colour phones get the bottom bar (Queue, Episodes, Podcasts, Add, More) with counts; e-ink gets browser-style tabs along the top (the selected tab is outlined and open at the bottom), black and white, no animation, paged. Both share the big screen titles, the episode rows (date, size, bold title, time or progress with elapsed and remaining, big round play button), the mini player with a progress line along its top edge, and the player (collapse arrow, favourite, sleep timer, menu, cover, podcast and date, title, Shownotes button, seek bar, speed, rewind, round play button, forward, next).

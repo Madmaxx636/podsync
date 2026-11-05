@@ -35,7 +35,7 @@ class Pal {
     bg: Colors.white,
     toolbarTop: Color(0xFFF3F3F3),
     toolbarBottom: Color(0xFFD9D9D9),
-    sidebar: Color(0xFFE6EBF1),
+    sidebar: Color(0xFFF0F0F2),
     selected: Color(0xFF3D80DF),
     stripe: Color(0xFFF3F6FA),
     rule: Color(0xFFBDBDBD),

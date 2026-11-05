@@ -39,7 +39,7 @@ Future<void> main(List<String> args) async {
   // Windows and Linux: tray icon, close to tray, start at login, media keys.
   if (DesktopIntegration.supported) {
     await DesktopIntegration.prepareWindow(library, args);
-    await DesktopIntegration(library, player).start();
+    await DesktopIntegration(library, player, downloads: downloads).start();
   }
 
   runApp(

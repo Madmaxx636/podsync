@@ -137,15 +137,17 @@ void main() {
     await tester.pumpWidget(_app(lib, const DesktopShell()));
     await tester.pump();
 
-    VoidCallback? onPressed(IconData icon) => tester
-        .widget<IconButton>(find.widgetWithIcon(IconButton, icon))
-        .onPressed;
-    expect(
-      onPressed(Icons.arrow_back_ios_new),
-      isNull,
-      reason: 'nothing to go back to yet',
-    );
-    expect(onPressed(Icons.arrow_forward_ios), isNull);
+    // The arrows are joined into one control in the second toolbar row.
+    VoidCallback? onPressed(String tooltip) => tester
+        .widget<InkWell>(
+          find.descendant(
+            of: find.byTooltip(tooltip),
+            matching: find.byType(InkWell),
+          ),
+        )
+        .onTap;
+    expect(onPressed('Go back'), isNull, reason: 'nothing to go back to yet');
+    expect(onPressed('Go forward'), isNull);
 
     await tester.tap(find.text('Podcasts'));
     await tester.pump();
@@ -166,13 +168,13 @@ void main() {
     await tester.tap(find.byTooltip('Go back'));
     await tester.pump();
     expect(find.byType(GridView), findsOneWidget);
-    expect(onPressed(Icons.arrow_forward_ios), isNotNull);
+    expect(onPressed('Go forward'), isNotNull);
 
     await tester.tap(find.byTooltip('Go back'));
     await tester.pump();
     expect(find.byType(GridView), findsNothing);
     expect(find.text('Ep Two'), findsOneWidget);
-    expect(onPressed(Icons.arrow_back_ios_new), isNull);
+    expect(onPressed('Go back'), isNull);
 
     // Forward replays the path; going somewhere new drops what was ahead.
     await tester.tap(find.byTooltip('Go forward'));
@@ -180,7 +182,7 @@ void main() {
     expect(find.byType(GridView), findsOneWidget);
     await tester.tap(find.text('Favorites'));
     await tester.pump();
-    expect(onPressed(Icons.arrow_forward_ios), isNull);
+    expect(onPressed('Go forward'), isNull);
 
     // Keyboard: Alt+Left goes back.
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
@@ -215,7 +217,7 @@ void main() {
 
   group('desktop right-click menus', () {
     Future<Library> pumpDesktop(WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.physicalSize = const Size(1200, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final lib = await _loadedLibrary();

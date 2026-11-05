@@ -171,7 +171,7 @@ void main() {
       }
       await tester.pump();
       expect(inSidebar('Settings and Sync'), findsOneWidget); // always there
-      expect(inSidebar('LIBRARY'), findsNothing); // no empty heading
+      expect(inSidebar('Library'), findsNothing); // no empty heading
       await tester.pump(const Duration(milliseconds: 400));
     });
 

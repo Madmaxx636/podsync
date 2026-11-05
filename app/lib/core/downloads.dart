@@ -50,6 +50,9 @@ class DownloadManager extends ChangeNotifier {
   }) : _http = client ?? http.Client();
 
   final Library library;
+
+  /// Called when an episode has finished downloading (desktop notifications use it).
+  void Function(String id)? onFinished;
   final http.Client _http;
   final Directory? _directory;
   File? _indexFile;
@@ -511,6 +514,7 @@ class DownloadManager extends ChangeNotifier {
         ..state = DownloadState.done;
       _episodes.remove(id);
       _saveSoon();
+      onFinished?.call(id);
     } catch (err) {
       await sink?.close();
       info

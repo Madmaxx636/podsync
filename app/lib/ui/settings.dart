@@ -788,6 +788,22 @@ List<SettingsCategory> settingsCategories(
             'When started at sign-in, do not open the window (needs the tray icon)',
           ),
           tog(
+            'taskbarControls',
+            'Playback buttons in the taskbar preview (Windows)',
+            'Hover over PodSync in the taskbar to see previous, play/pause and next, plus progress on its icon',
+          ),
+          tog(
+            'notifyNewEpisodes',
+            'Notify me about new episodes',
+            'A desktop notification when a refresh finds new episodes (only while PodSync is not in front)',
+          ),
+          tog('notifyDownloads', 'Notify me when a download finishes', ''),
+          tog(
+            'notifyNowPlaying',
+            'Notify me when the next episode starts',
+            'Handy when PodSync is hidden in the tray',
+          ),
+          tog(
             'mediaControls',
             'Media keys and system now-playing controls',
             'Play, pause and skip from the keyboard, headphones, the lock screen or the desktop\'s media widget (restart not needed)',

@@ -79,7 +79,7 @@ void main() {
       expect(tester.widget<Slider>(slider).value, 0.0);
 
       // Dragging while muted unmutes.
-      await tester.drag(slider, const Offset(40, 0));
+      await tester.drag(slider, const Offset(20, 0));
       await tester.pump();
       expect(lib.settings.muted, isFalse);
 
@@ -119,10 +119,13 @@ void main() {
       for (final m in ['File', 'Edit', 'View', 'Controls', 'Account', 'Help']) {
         expect(find.text(m), findsOneWidget, reason: m);
       }
-      expect(find.text('LIBRARY'), findsOneWidget);
+      expect(
+        find.text('Library'),
+        findsNWidgets(2),
+      ); // the sidebar heading and the tab
       await openMenu(tester, 'View', 'Show Sidebar');
       expect(lib.settings.showSidebar, isFalse);
-      expect(find.text('LIBRARY'), findsNothing);
+      expect(find.text('Library'), findsOneWidget); // only the tab is left
 
       await openMenu(tester, 'View', 'Show Details Pane');
       expect(lib.settings.showDetails, isTrue);
