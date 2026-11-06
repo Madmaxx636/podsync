@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.0 - 2026-11-05
+
+- Customize Toolbar: right-click the top bar (or View > Customize Toolbar…) to edit it. Drag the parts into any order (anything left of the display sits on its left, anything right of it on its right), tick them on or off, and size them with sliders: bar height, button size, display width, search width and volume width. Reset puts it all back; Done closes the editor. Choices are kept per device.
+- Mini player redone like iTunes': a square window with the cover filling it, the title across the top, and a dark translucent panel at the bottom with rewind, play/pause, fast-forward, next and a scrubber with both times. It also no longer breaks when the window manager refuses to move or maximize the window, and it restores a maximized window when you go back.
+
 ## 0.8.0 - 2026-11-05
 
 - Settings now sync between your devices through the PodSync server (desktop and Android). Synced: theme, accent colour, text size, compact layout, artwork and date format; playback and library options; download rules (auto-download, auto-delete, Wi-Fi only, how many at once); refresh and sync schedules; notifications; the store country. Kept on each device: window layout and zoom, column widths, which buttons are shown, tray and start-up options, the download folder, volume, e-ink options and update choices. A change on one device shows up on the others at their next sync; if both change, the most recent change wins.

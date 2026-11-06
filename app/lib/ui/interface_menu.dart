@@ -39,8 +39,9 @@ Future<void> _show(
   Offset at,
   Library lib,
   List<_Toggle> toggles,
-  VoidCallback onMore,
-) async {
+  VoidCallback onMore, {
+  VoidCallback? onEditToolbar,
+}) async {
   final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
   final choice = await showMenu<String>(
     context: context,
@@ -56,11 +57,15 @@ Future<void> _show(
           child: Text(t.label),
         ),
       const PopupMenuDivider(),
+      if (onEditToolbar != null)
+        const PopupMenuItem(value: '_edit', child: Text('Customize Toolbar…')),
       const PopupMenuItem(value: '_more', child: Text('Customize Interface…')),
     ],
   );
   if (choice == null) return;
-  if (choice == '_more') {
+  if (choice == '_edit') {
+    onEditToolbar?.call();
+  } else if (choice == '_more') {
     onMore();
   } else {
     lib.setSetting(choice, !(lib.settings[choice] as bool));
@@ -73,8 +78,16 @@ Future<void> showToolbarMenu(
   BuildContext context,
   Offset at,
   Library lib,
-  VoidCallback onMore,
-) => _show(context, at, lib, _toolbarToggles, onMore);
+  VoidCallback onMore, {
+  VoidCallback? onEditToolbar,
+}) => _show(
+  context,
+  at,
+  lib,
+  _toolbarToggles,
+  onMore,
+  onEditToolbar: onEditToolbar,
+);
 
 /// Right-click on the sidebar: choose which sections it lists.
 Future<void> showSidebarMenu(

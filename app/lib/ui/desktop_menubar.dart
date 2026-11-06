@@ -14,6 +14,7 @@ import '../core/library.dart';
 import '../core/opml.dart';
 import '../core/player.dart';
 import 'common.dart';
+import 'desktop_toolbar.dart';
 import 'mini_player.dart';
 import 'pal.dart';
 import 'zoom.dart';
@@ -266,6 +267,7 @@ class AppMenuBar extends StatelessWidget {
                       item('Zoom Out', () => Zoom.change(lib, -Zoom.step)),
                       item('Actual Size', () => Zoom.reset(lib)),
                       item('Mini Player', MiniPlayer.toggle),
+                      item('Customize Toolbar…', ToolbarEditor.toggle),
                       const Divider(height: 1),
                       item(
                         'Up Next Popover',

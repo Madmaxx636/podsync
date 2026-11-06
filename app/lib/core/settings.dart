@@ -108,6 +108,14 @@ class AppSettings {
     'colRating': true,
     'colStarts': true,
     'sidebarWidth': 200.0,
+    // Top bar layout (Customize Toolbar): the order of its parts and their sizes
+    'toolbarOrder':
+        'transport,volume,display,upnext,downloads,sleep,speed,search',
+    'toolbarHeight': 58, // 54 to 90
+    'toolbarScale': 1.0, // size of the buttons and icons
+    'lcdWidth': 680.0, // the widest the display grows
+    'searchWidth': 170.0,
+    'volumeWidth': 100.0,
     'colWidths': '', // dragged column widths, like 'podcast=240,time=80'
     'tableRowHeight': 24,
     'colTime': true,
@@ -216,6 +224,36 @@ class AppSettings {
   int get accent => _get('accent');
   double get textScale => _get('textScale');
   double get zoom => _get('zoom');
+  String get toolbarOrder => _get('toolbarOrder');
+  int get toolbarHeight => _get('toolbarHeight');
+  double get toolbarScale => _get('toolbarScale');
+  double get lcdWidth => _get('lcdWidth');
+  double get searchWidth => _get('searchWidth');
+  double get volumeWidth => _get('volumeWidth');
+
+  static const toolbarParts = [
+    'transport',
+    'volume',
+    'display',
+    'upnext',
+    'downloads',
+    'sleep',
+    'speed',
+    'search',
+  ];
+
+  /// The top bar's parts in the order chosen; unknown names are dropped and missing ones go last.
+  List<String> get toolbarItems {
+    final out = <String>[];
+    for (final k in toolbarOrder.split(',')) {
+      if (toolbarParts.contains(k) && !out.contains(k)) out.add(k);
+    }
+    for (final k in toolbarParts) {
+      if (!out.contains(k)) out.add(k);
+    }
+    return out;
+  }
+
   String get colWidths => _get('colWidths');
 
   /// The column widths the person dragged to, by column key.

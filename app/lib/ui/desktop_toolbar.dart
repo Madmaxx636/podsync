@@ -6,6 +6,7 @@ import '../core/downloads.dart';
 import '../core/library.dart';
 import '../core/models.dart';
 import '../core/player.dart';
+import '../core/settings.dart';
 import 'common.dart';
 import 'interface_menu.dart';
 import 'mini_player.dart';
@@ -13,7 +14,45 @@ import 'pal.dart';
 import 'zoom.dart';
 import 'sleep_ui.dart';
 
-/// iTunes' top bar: history arrows, transport, volume, the "LCD", Up Next, speed, search.
+/// Customize Toolbar: while on, the top bar shows an editor underneath it (reorder, hide, resize).
+class ToolbarEditor {
+  static final ValueNotifier<bool> active = ValueNotifier(false);
+  static void toggle() => active.value = !active.value;
+
+  static const labels = {
+    'transport': 'Play buttons',
+    'volume': 'Volume',
+    'display': 'Display',
+    'upnext': 'Up Next',
+    'downloads': 'Downloads',
+    'sleep': 'Sleep timer',
+    'speed': 'Speed',
+    'search': 'Search',
+  };
+
+  /// The switch that shows or hides each part, if it has one.
+  static const switches = {
+    'transport': 'uiSkipButtons',
+    'volume': 'uiVolume',
+    'upnext': 'uiUpNextButton',
+    'downloads': 'uiDownloadsButton',
+    'sleep': 'uiSleepTimer',
+    'speed': 'uiSpeed',
+    'search': 'uiSearch',
+  };
+
+  static const defaults = [
+    'toolbarOrder',
+    'toolbarHeight',
+    'toolbarScale',
+    'lcdWidth',
+    'searchWidth',
+    'volumeWidth',
+  ];
+}
+
+/// iTunes' top bar: transport, volume, the "LCD", Up Next, downloads, speed, search. The order and
+/// sizes are the person's (Customize Toolbar).
 class DesktopToolbar extends StatelessWidget {
   const DesktopToolbar({
     super.key,
@@ -31,17 +70,180 @@ class DesktopToolbar extends StatelessWidget {
   final VoidCallback onOpenDownloads; // the full Downloads screen
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+    valueListenable: ToolbarEditor.active,
+    builder: (context, editing, _) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _bar(context, editing),
+        if (editing) const _ToolbarEditorPanel(),
+      ],
+    ),
+  );
+
+  Widget _bar(BuildContext context, bool editing) {
     final player = context.watch<PlayerController>();
     final lib = context.watch<Library>();
     final ui = lib.settings;
     final pal = Pal.of(context);
+    final scale = ui.toolbarScale;
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(15),
       borderSide: BorderSide(color: pal.rule),
     );
+    final barHeight = ui.toolbarHeight.toDouble();
+
+    Widget? part(String id) {
+      switch (id) {
+        case 'transport':
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // iTunes' transport: round buttons close together, the play button a little bigger.
+              if (ui.uiSkipButtons) ...[
+                _RoundButton(
+                  icon: Icons.fast_rewind,
+                  tooltip: 'Back ${lib.skipBackSec}s',
+                  onTap: player.skipBack,
+                ),
+                const SizedBox(width: 6),
+              ],
+              _RoundButton(
+                icon: player.playing ? Icons.pause : Icons.play_arrow,
+                tooltip: player.playing ? 'Pause' : 'Play',
+                diameter: 36,
+                iconSize: 22,
+                onTap: player.current == null ? null : player.toggle,
+              ),
+              if (ui.uiSkipButtons) ...[
+                const SizedBox(width: 6),
+                _RoundButton(
+                  icon: Icons.fast_forward,
+                  tooltip: 'Forward ${lib.skipForwardSec}s',
+                  onTap: player.skipForward,
+                ),
+                const SizedBox(width: 6),
+                _RoundButton(
+                  icon: Icons.skip_next,
+                  tooltip: 'Next in Up Next',
+                  onTap: player.next,
+                ),
+              ],
+            ],
+          );
+        case 'volume':
+          return ui.uiVolume ? const VolumeControl() : null;
+        case 'display':
+          return null; // placed separately: it takes the space that is left
+        case 'upnext':
+          return ui.uiUpNextButton
+              ? _UpNextButton(onGoToPodcast: onGoToPodcast)
+              : null;
+        case 'downloads':
+          return ui.uiDownloadsButton
+              ? _DownloadsButton(onOpenDownloads: onOpenDownloads)
+              : null;
+        case 'sleep':
+          return ui.uiSleepTimer ? const SleepTimerButton() : null;
+        case 'speed':
+          if (!ui.uiSpeed) return null;
+          return TextButton(
+            style: TextButton.styleFrom(foregroundColor: pal.muted),
+            onPressed: () {
+              const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
+              final feed = player.current?.feedUrl ?? '';
+              final i = speeds.indexWhere(
+                (s) => (s - lib.speedFor(feed)).abs() < 0.01,
+              );
+              player.setSpeed(speeds[(i + 1) % speeds.length]);
+            },
+            child: Text(
+              '${lib.speedFor(player.current?.feedUrl ?? '')}×',
+              style: TextStyle(fontSize: 14 * scale),
+            ),
+          );
+        case 'search':
+          if (!ui.uiSearch) return null;
+          return SizedBox(
+            width: ui.searchWidth,
+            height: 28 * scale,
+            child: TextField(
+              focusNode: searchFocus,
+              onChanged: onSearch,
+              style: TextStyle(fontSize: 13 * scale, color: pal.text),
+              decoration: InputDecoration(
+                isDense: true,
+                filled: true,
+                fillColor: pal.field,
+                hintText: 'Search Library',
+                hintStyle: TextStyle(color: pal.muted),
+                prefixIcon: Icon(
+                  Icons.search,
+                  size: 16 * scale,
+                  color: pal.muted,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                border: border,
+                enabledBorder: border,
+              ),
+            ),
+          );
+      }
+      return null;
+    }
+
+    Widget framed(String id, Widget w) => !editing
+        ? w
+        : Container(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primary
+                    .withValues(alpha: 0.6),
+              ),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            padding: const EdgeInsets.all(2),
+            child: w,
+          );
+
+    final children = <Widget>[];
+    for (final id in ui.toolbarItems) {
+      if (id == 'display') {
+        children.add(
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: ui.lcdWidth),
+                child: framed(
+                  id,
+                  Lcd(
+                    player: player,
+                    onGoToPodcast: onGoToPodcast,
+                    height: (barHeight - 8).clamp(46.0, 84.0),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
+      final w = part(id);
+      if (w != null) children.add(framed(id, w));
+    }
+    // Space between the parts; a wider gap on each side of the display.
+    final spaced = <Widget>[];
+    for (var i = 0; i < children.length; i++) {
+      if (i > 0) {
+        final nearDisplay =
+            children[i] is Expanded || children[i - 1] is Expanded;
+        spaced.add(SizedBox(width: nearDisplay ? 16 : 12));
+      }
+      spaced.add(children[i]);
+    }
+
     return Container(
-      height: 58,
+      height: barHeight,
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -58,106 +260,201 @@ class DesktopToolbar extends StatelessWidget {
           Zoom.at(context, d.globalPosition),
           lib,
           onCustomize,
+          onEditToolbar: ToolbarEditor.toggle,
         ),
-        child: Row(
-          children: [
-            // iTunes' transport: round buttons close together, the play button a little bigger.
-            if (ui.uiSkipButtons) ...[
-              _RoundButton(
-                icon: Icons.fast_rewind,
-                tooltip: 'Back ${lib.skipBackSec}s',
-                onTap: player.skipBack,
-              ),
-              const SizedBox(width: 6),
-            ],
-            _RoundButton(
-              icon: player.playing ? Icons.pause : Icons.play_arrow,
-              tooltip: player.playing ? 'Pause' : 'Play',
-              diameter: 36,
-              iconSize: 22,
-              onTap: player.current == null ? null : player.toggle,
-            ),
-            if (ui.uiSkipButtons) ...[
-              const SizedBox(width: 6),
-              _RoundButton(
-                icon: Icons.fast_forward,
-                tooltip: 'Forward ${lib.skipForwardSec}s',
-                onTap: player.skipForward,
-              ),
-              const SizedBox(width: 6),
-              _RoundButton(
-                icon: Icons.skip_next,
-                tooltip: 'Next in Up Next',
-                onTap: player.next,
-              ),
-            ],
-            if (ui.uiVolume) ...[
-              const SizedBox(width: 16),
-              const VolumeControl(),
-            ],
-            const SizedBox(width: 16),
-            Expanded(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 680),
-                  child: Lcd(player: player, onGoToPodcast: onGoToPodcast),
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            const SizedBox(width: 4),
-            if (ui.uiUpNextButton) _UpNextButton(onGoToPodcast: onGoToPodcast),
-            if (ui.uiUpNextButton && ui.uiDownloadsButton)
-              const SizedBox(width: 18),
-            if (ui.uiDownloadsButton)
-              _DownloadsButton(onOpenDownloads: onOpenDownloads),
-            if (ui.uiSleepTimer) ...[
-              const SizedBox(width: 10),
-              const SleepTimerButton(),
-            ],
-            const SizedBox(width: 4),
-            if (ui.uiSpeed)
-              TextButton(
-                style: TextButton.styleFrom(foregroundColor: pal.muted),
-                onPressed: () {
-                  const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
-                  final feed = player.current?.feedUrl ?? '';
-                  final i = speeds.indexWhere(
-                    (s) => (s - lib.speedFor(feed)).abs() < 0.01,
-                  );
-                  player.setSpeed(speeds[(i + 1) % speeds.length]);
-                },
-                child: Text('${lib.speedFor(player.current?.feedUrl ?? '')}×'),
-              ),
-            if (ui.uiSearch)
-              SizedBox(
-                width: 170,
-                height: 28,
-                child: TextField(
-                  focusNode: searchFocus,
-                  onChanged: onSearch,
-                  style: TextStyle(fontSize: 13, color: pal.text),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    filled: true,
-                    fillColor: pal.field,
-                    hintText: 'Search Library',
-                    hintStyle: TextStyle(color: pal.muted),
-                    prefixIcon: Icon(Icons.search, size: 16, color: pal.muted),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 6),
-                    border: border,
-                    enabledBorder: border,
-                  ),
-                ),
-              ),
-          ],
+        child: IconButtonTheme(
+          data: IconButtonThemeData(
+            style: IconButton.styleFrom(iconSize: 24 * scale),
+          ),
+          child: IgnorePointer(
+            ignoring: editing,
+            child: Row(children: spaced),
+          ),
         ),
       ),
     );
   }
 }
 
-/// Speaker button (click to mute) and a volume slider. The mouse wheel over it nudges the volume.
+/// What shows under the top bar while Customize Toolbar is on: the parts to drag into order and tick
+/// on or off, and a slider for each size.
+class _ToolbarEditorPanel extends StatelessWidget {
+  const _ToolbarEditorPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<Library>();
+    final s = lib.settings;
+    final pal = Pal.of(context);
+    final items = s.toolbarItems;
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget slider(
+      String label,
+      String key,
+      double value,
+      double min,
+      double max, {
+      bool whole = false,
+    }) => SizedBox(
+      width: 250,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 12.5, color: pal.text),
+            ),
+          ),
+          Expanded(
+            child: Slider(
+              value: value.clamp(min, max),
+              min: min,
+              max: max,
+              onChanged: (v) => lib.setSetting(
+                key,
+                whole ? v.round() : (v * 20).round() / 20,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Container(
+      color: pal.header,
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+      decoration: null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Customize Toolbar',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: pal.text,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Drag to reorder, tick to show. Parts left of the display sit on its left.',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, color: pal.muted),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  for (final k in ToolbarEditor.defaults) {
+                    lib.settings.reset(k);
+                  }
+                  lib.setSetting(
+                    'toolbarOrder',
+                    AppSettings.defaults['toolbarOrder']! as String,
+                  );
+                },
+                child: const Text('Reset'),
+              ),
+              FilledButton(
+                onPressed: ToolbarEditor.toggle,
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+          SizedBox(
+            height: 40,
+            child: ReorderableListView.builder(
+              scrollDirection: Axis.horizontal,
+              buildDefaultDragHandles: false,
+              itemCount: items.length,
+              onReorderItem: (o, n) {
+                final next = [...items];
+                next.insert(n, next.removeAt(o));
+                lib.setSetting('toolbarOrder', next.join(','));
+              },
+              itemBuilder: (c, i) {
+                final id = items[i];
+                final sw = ToolbarEditor.switches[id];
+                final on = sw == null || (s[sw] as bool);
+                return ReorderableDragStartListener(
+                  key: ValueKey(id),
+                  index: i,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.grab,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: id == 'display'
+                              ? scheme.primary.withValues(alpha: 0.15)
+                              : pal.bg,
+                          border: Border.all(color: pal.rule),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.drag_indicator,
+                              size: 16,
+                              color: pal.muted,
+                            ),
+                            if (sw != null)
+                              SizedBox(
+                                width: 32,
+                                child: Checkbox(
+                                  value: on,
+                                  visualDensity: VisualDensity.compact,
+                                  onChanged: (v) =>
+                                      lib.setSetting(sw, v ?? true),
+                                ),
+                              )
+                            else
+                              const SizedBox(width: 8),
+                            Text(
+                              ToolbarEditor.labels[id]!,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: on ? pal.text : pal.muted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Wrap(
+            spacing: 18,
+            children: [
+              slider(
+                'Bar height',
+                'toolbarHeight',
+                s.toolbarHeight.toDouble(),
+                54,
+                90,
+                whole: true,
+              ),
+              slider('Button size', 'toolbarScale', s.toolbarScale, 0.8, 1.6),
+              slider('Display width', 'lcdWidth', s.lcdWidth, 280, 1100),
+              slider('Search width', 'searchWidth', s.searchWidth, 100, 340),
+              slider('Volume width', 'volumeWidth', s.volumeWidth, 50, 200),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A round, slightly raised button like iTunes' transport controls.
 class _RoundButton extends StatelessWidget {
   const _RoundButton({
@@ -175,6 +472,8 @@ class _RoundButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pal = Pal.of(context);
+    final k = context.select<Library, double>((l) => l.settings.toolbarScale);
+    final diameter = this.diameter * k, iconSize = this.iconSize * k;
     return Tooltip(
       message: tooltip,
       child: GestureDetector(
@@ -240,7 +539,9 @@ class VolumeControl extends StatelessWidget {
               onPressed: player.toggleMute,
             ),
             SizedBox(
-              width: 100,
+              width: context.select<Library, double>(
+                (l) => l.settings.volumeWidth,
+              ),
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 3,
@@ -267,7 +568,13 @@ class VolumeControl extends StatelessWidget {
 /// Click the right-hand time to flip between time left and total length. Click the podcast name to
 /// open it, the cover for the mini player.
 class Lcd extends StatelessWidget {
-  const Lcd({super.key, required this.player, required this.onGoToPodcast});
+  const Lcd({
+    super.key,
+    required this.player,
+    required this.onGoToPodcast,
+    this.height = 50,
+  });
+  final double height;
   final PlayerController player;
   final ValueChanged<String> onGoToPodcast;
 
@@ -280,8 +587,9 @@ class Lcd extends StatelessWidget {
     final remaining = context.select<Library, bool>(
       (l) => l.settings.lcdRemaining,
     );
+    final k = height / 50; // text and cover grow with the bar
     return Container(
-      height: 50,
+      height: height,
       decoration: BoxDecoration(
         color: pal.lcd,
         borderRadius: BorderRadius.circular(5),
@@ -292,7 +600,7 @@ class Lcd extends StatelessWidget {
           ? Center(
               child: Text(
                 'PodSync',
-                style: TextStyle(fontSize: 17, color: pal.muted),
+                style: TextStyle(fontSize: 17 * k, color: pal.muted),
               ),
             )
           : Row(
@@ -301,7 +609,7 @@ class Lcd extends StatelessWidget {
                   message: 'Open the mini player',
                   child: InkWell(
                     onTap: MiniPlayer.open,
-                    child: Art(e.imageUrl, size: 48, radius: 0),
+                    child: Art(e.imageUrl, size: height - 2, radius: 0),
                   ),
                 ),
                 Expanded(
@@ -316,7 +624,7 @@ class Lcd extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 13.5,
+                            fontSize: 13.5 * k,
                             height: 1.15,
                             fontWeight: FontWeight.w700,
                             color: pal.text,
@@ -330,22 +638,22 @@ class Lcd extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 12 * k,
                               height: 1.15,
                               color: pal.muted,
                             ),
                           ),
                         ),
                         SizedBox(
-                          height: 14,
+                          height: 14 * k,
                           child: Row(
                             children: [
                               SizedBox(
-                                width: 46,
+                                width: 46 * k,
                                 child: Text(
                                   fmtDuration(player.position),
                                   style: TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 11 * k,
                                     color: pal.text,
                                   ),
                                 ),
@@ -377,7 +685,7 @@ class Lcd extends StatelessWidget {
                                 onTap: () =>
                                     lib.setSetting('lcdRemaining', !remaining),
                                 child: SizedBox(
-                                  width: 54,
+                                  width: 54 * k,
                                   child: Text(
                                     total <= 0
                                         ? ''
@@ -386,7 +694,7 @@ class Lcd extends StatelessWidget {
                                               : fmtDuration(player.duration)),
                                     textAlign: TextAlign.right,
                                     style: TextStyle(
-                                      fontSize: 11,
+                                      fontSize: 11 * k,
                                       color: pal.text,
                                     ),
                                   ),
