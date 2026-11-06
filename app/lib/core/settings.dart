@@ -129,16 +129,46 @@ class AppSettings {
     'maxEpisodesPerFeed': 0, // 0 = keep everything
   };
 
+  /// Travel with the account to every device. Anything about this device's own window, folders,
+  /// tray, e-ink screen or which buttons are shown stays here.
   static const Set<String> synced = {
+    // Playback
     'continueQueue',
     'removePlayedFromQueue',
     'smartRewindSec',
     'autoPlayedRemainingSec',
     'skipSilence',
+    // Library
     'sortOldestFirst',
     'hidePlayed',
     'newEpisodesAction',
     'maxEpisodesPerFeed',
+    // Appearance
+    'themeMode',
+    'accent',
+    'textScale',
+    'compact',
+    'showArtwork',
+    'dateStyle',
+    // Downloads
+    'autoDownloadQueue',
+    'autoDownloadQueueCount',
+    'autoDownloadNew',
+    'autoDownloadNewLimit',
+    'autoDeleteHours',
+    'keepFavoriteDownloads',
+    'maxDownloads',
+    'downloadWifiOnly',
+    // Automation and notifications
+    'refreshOnLaunch',
+    'refreshIntervalMin',
+    'syncOnStart',
+    'syncOnPause',
+    'syncIntervalMin',
+    'notifyNewEpisodes',
+    'notifyDownloads',
+    'confirmClearQueue',
+    'storeCountry',
   };
 
   final Map<String, Object> _v = {...defaults};

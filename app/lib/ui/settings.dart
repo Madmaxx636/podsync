@@ -650,9 +650,7 @@ List<SettingsCategory> settingsCategories(
     SettingsCategory('Sync', 'Accounts and when to sync', Icons.sync, [
       PageItem(
         'PodSync server',
-        lib.signedIn
-            ? 'Signed in as ${lib.username}'
-            : 'Syncs everything: progress, queue, favorites, settings',
+        lib.signedIn ? 'Signed in as ${lib.username}' : 'Syncs progress, queue, favorites and your settings between devices',
         () => const _AccountPage('PodSync server', AccountSection.podsync),
       ),
       PageItem(

@@ -1454,6 +1454,7 @@ class Library extends ChangeNotifier {
           skipBackSec = data['skipBack'] ?? skipBackSec;
           skipForwardSec = data['skipForward'] ?? skipForwardSec;
           settings.applySynced(Map<String, dynamic>.from(data['more'] ?? {}));
+          currentDateStyle = settings.dateStyle;
           prefsUpdatedAt = at;
           break;
       }

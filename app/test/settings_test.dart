@@ -68,9 +68,9 @@ void main() {
       () {
         final lib = Library();
         lib.setSetting('smartRewindSec', 10); // synced
-        lib.setSetting('accent', 0xFF000000); // this device only
+        lib.setSetting('downloadDir', '/x'); // this device only
         final record = lib.exportBackup(); // sanity: backup holds both
-        expect(jsonDecode(record)['settings']['accent'], 0xFF000000);
+        expect(jsonDecode(record)['settings']['downloadDir'], '/x');
 
         final other = Library();
         other.applyRemote([
@@ -81,15 +81,19 @@ void main() {
             'deleted': false,
             'data': {
               'speed': 1.5,
-              'more': {'smartRewindSec': 15, 'accent': 1, 'hidePlayed': true},
+              'more': {
+                'smartRewindSec': 15,
+                'downloadDir': '/other',
+                'hidePlayed': true,
+              },
             },
           },
         ]);
         expect(other.settings.smartRewindSec, 15);
         expect(other.settings.hidePlayed, isTrue);
         expect(
-          other.settings.accent,
-          AppSettings.defaults['accent'],
+          other.settings.downloadDir,
+          AppSettings.defaults['downloadDir'],
         ); // device-only values never arrive
         expect(other.speed, 1.5);
       },

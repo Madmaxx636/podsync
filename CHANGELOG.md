@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 - 2026-11-05
+
+- Settings now sync between your devices through the PodSync server (desktop and Android). Synced: theme, accent colour, text size, compact layout, artwork and date format; playback and library options; download rules (auto-download, auto-delete, Wi-Fi only, how many at once); refresh and sync schedules; notifications; the store country. Kept on each device: window layout and zoom, column widths, which buttons are shown, tray and start-up options, the download folder, volume, e-ink options and update choices. A change on one device shows up on the others at their next sync; if both change, the most recent change wins.
+
 ## 0.7.1 - 2026-11-05
 
 - Desktop top bar redone to match iTunes' proportions: a shorter bar, round transport buttons close together (play slightly larger), a short volume slider, and a wide centred display with the cover, centred title and podcast, and the scrubber with the time at each end.
