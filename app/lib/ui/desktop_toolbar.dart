@@ -41,8 +41,8 @@ class DesktopToolbar extends StatelessWidget {
       borderSide: BorderSide(color: pal.rule),
     );
     return Container(
-      height: 68,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -61,53 +61,60 @@ class DesktopToolbar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            if (ui.uiSkipButtons)
-              IconButton(
-                icon: const Icon(Icons.fast_rewind),
-                iconSize: 28,
-                color: pal.text,
+            // iTunes' transport: round buttons close together, the play button a little bigger.
+            if (ui.uiSkipButtons) ...[
+              _RoundButton(
+                icon: Icons.fast_rewind,
                 tooltip: 'Back ${lib.skipBackSec}s',
-                onPressed: player.skipBack,
+                onTap: player.skipBack,
               ),
-            IconButton(
-              iconSize: 40,
-              color: pal.text,
+              const SizedBox(width: 6),
+            ],
+            _RoundButton(
+              icon: player.playing ? Icons.pause : Icons.play_arrow,
               tooltip: player.playing ? 'Pause' : 'Play',
-              icon: Icon(player.playing ? Icons.pause : Icons.play_arrow),
-              onPressed: player.current == null ? null : player.toggle,
+              diameter: 36,
+              iconSize: 22,
+              onTap: player.current == null ? null : player.toggle,
             ),
             if (ui.uiSkipButtons) ...[
-              IconButton(
-                icon: const Icon(Icons.fast_forward),
-                iconSize: 28,
-                color: pal.text,
+              const SizedBox(width: 6),
+              _RoundButton(
+                icon: Icons.fast_forward,
                 tooltip: 'Forward ${lib.skipForwardSec}s',
-                onPressed: player.skipForward,
+                onTap: player.skipForward,
               ),
-              IconButton(
-                icon: const Icon(Icons.skip_next),
+              const SizedBox(width: 6),
+              _RoundButton(
+                icon: Icons.skip_next,
                 tooltip: 'Next in Up Next',
-                onPressed: player.next,
+                onTap: player.next,
               ),
             ],
             if (ui.uiVolume) ...[
-              const SizedBox(width: 8),
+              const SizedBox(width: 16),
               const VolumeControl(),
             ],
-            const SizedBox(width: 12),
+            const SizedBox(width: 16),
             Expanded(
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 520),
+                  constraints: const BoxConstraints(maxWidth: 680),
                   child: Lcd(player: player, onGoToPodcast: onGoToPodcast),
                 ),
               ),
             ),
+            const SizedBox(width: 16),
             const SizedBox(width: 4),
             if (ui.uiUpNextButton) _UpNextButton(onGoToPodcast: onGoToPodcast),
+            if (ui.uiUpNextButton && ui.uiDownloadsButton)
+              const SizedBox(width: 18),
             if (ui.uiDownloadsButton)
               _DownloadsButton(onOpenDownloads: onOpenDownloads),
-            if (ui.uiSleepTimer) const SleepTimerButton(),
+            if (ui.uiSleepTimer) ...[
+              const SizedBox(width: 10),
+              const SleepTimerButton(),
+            ],
             const SizedBox(width: 4),
             if (ui.uiSpeed)
               TextButton(
@@ -124,8 +131,8 @@ class DesktopToolbar extends StatelessWidget {
               ),
             if (ui.uiSearch)
               SizedBox(
-                width: 180,
-                height: 30,
+                width: 170,
+                height: 28,
                 child: TextField(
                   focusNode: searchFocus,
                   onChanged: onSearch,
@@ -151,6 +158,55 @@ class DesktopToolbar extends StatelessWidget {
 }
 
 /// Speaker button (click to mute) and a volume slider. The mouse wheel over it nudges the volume.
+/// A round, slightly raised button like iTunes' transport controls.
+class _RoundButton extends StatelessWidget {
+  const _RoundButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.diameter = 28,
+    this.iconSize = 16,
+  });
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+  final double diameter, iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = Pal.of(context);
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: MouseRegion(
+          cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+          child: Container(
+            width: diameter,
+            height: diameter,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: pal.rule),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [pal.toolbarTop, pal.toolbarBottom],
+              ),
+            ),
+            child: Icon(
+              icon,
+              size: iconSize,
+              color: onTap == null
+                  ? pal.muted.withValues(alpha: 0.5)
+                  : pal.text,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class VolumeControl extends StatelessWidget {
   const VolumeControl({super.key});
 
@@ -179,11 +235,12 @@ class VolumeControl extends StatelessWidget {
           children: [
             IconButton(
               icon: Icon(icon),
-              iconSize: 20,
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
               onPressed: player.toggleMute,
             ),
             SizedBox(
-              width: 92,
+              width: 100,
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 3,
@@ -206,8 +263,9 @@ class VolumeControl extends StatelessWidget {
   }
 }
 
-/// The iTunes "LCD": artwork, title, podcast and a scrubber. Click the right-hand time to flip between
-/// time left and total length. Click the podcast name to open it.
+/// The iTunes "LCD": artwork, centred title and podcast, and a scrubber with the time on each end.
+/// Click the right-hand time to flip between time left and total length. Click the podcast name to
+/// open it, the cover for the mini player.
 class Lcd extends StatelessWidget {
   const Lcd({super.key, required this.player, required this.onGoToPodcast});
   final PlayerController player;
@@ -223,17 +281,18 @@ class Lcd extends StatelessWidget {
       (l) => l.settings.lcdRemaining,
     );
     return Container(
-      height: 56,
+      height: 50,
       decoration: BoxDecoration(
         color: pal.lcd,
         borderRadius: BorderRadius.circular(5),
         border: Border.all(color: pal.rule),
       ),
+      clipBehavior: Clip.antiAlias,
       child: e == null
           ? Center(
               child: Text(
                 'PodSync',
-                style: TextStyle(fontSize: 18, color: pal.muted),
+                style: TextStyle(fontSize: 17, color: pal.muted),
               ),
             )
           : Row(
@@ -242,12 +301,12 @@ class Lcd extends StatelessWidget {
                   message: 'Open the mini player',
                   child: InkWell(
                     onTap: MiniPlayer.open,
-                    child: Art(e.imageUrl, size: 56, radius: 0),
+                    child: Art(e.imageUrl, size: 48, radius: 0),
                   ),
                 ),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -255,8 +314,9 @@ class Lcd extends StatelessWidget {
                           e.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 14.5,
+                            fontSize: 13.5,
                             height: 1.15,
                             fontWeight: FontWeight.w700,
                             color: pal.text,
@@ -268,23 +328,24 @@ class Lcd extends StatelessWidget {
                             lib.podcastTitle(e.feedUrl),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 12.5,
+                              fontSize: 12,
                               height: 1.15,
                               color: pal.muted,
                             ),
                           ),
                         ),
                         SizedBox(
-                          height: 18,
+                          height: 14,
                           child: Row(
                             children: [
                               SizedBox(
-                                width: 50,
+                                width: 46,
                                 child: Text(
                                   fmtDuration(player.position),
                                   style: TextStyle(
-                                    fontSize: 11.5,
+                                    fontSize: 11,
                                     color: pal.text,
                                   ),
                                 ),
@@ -316,7 +377,7 @@ class Lcd extends StatelessWidget {
                                 onTap: () =>
                                     lib.setSetting('lcdRemaining', !remaining),
                                 child: SizedBox(
-                                  width: 58,
+                                  width: 54,
                                   child: Text(
                                     total <= 0
                                         ? ''
@@ -325,7 +386,7 @@ class Lcd extends StatelessWidget {
                                               : fmtDuration(player.duration)),
                                     textAlign: TextAlign.right,
                                     style: TextStyle(
-                                      fontSize: 11.5,
+                                      fontSize: 11,
                                       color: pal.text,
                                     ),
                                   ),

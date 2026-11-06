@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 - 2026-11-05
+
+- Desktop top bar redone to match iTunes' proportions: a shorter bar, round transport buttons close together (play slightly larger), a short volume slider, and a wide centred display with the cover, centred title and podcast, and the scrubber with the time at each end.
+- More room between the Up Next, Downloads and sleep timer buttons.
+
 ## 0.7.0 - 2026-11-05
 
 - Fixed: after closing PodSync to the tray, clicking its icon on the taskbar or desktop opened a second copy. A second launch now just brings the running window back (Windows and Linux).
