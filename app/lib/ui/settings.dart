@@ -307,6 +307,20 @@ List<SettingsCategory> settingsCategories(
           'Choose which tabs show and their order. Others move to the \u22ee menu',
           (c) => showNavTabsDialog(c, lib),
         ),
+        const HeaderItem('Podcasts screen'),
+        choice<String>(
+          'podcastsView',
+          'Show podcasts as',
+          'A grid of covers or a list with names. The buttons at the top of the screen switch it too',
+          {
+            'Grid, or list on e-ink (default)': '',
+            'Grid': 'grid',
+            'List': 'list',
+          },
+        ),
+        choice<int>('gridColumns', 'Grid size', 'How many covers per row', {
+          for (final n in [2, 3, 4, 5, 6]) '$n per row': n,
+        }),
         const HeaderItem('Player bar'),
         choice<String>(
           'playerBarSize',

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:podsync/core/models.dart';
+import 'package:podsync/ui/common.dart';
 import 'package:podsync/ui/mobile.dart';
+import 'package:podsync/ui/paged.dart';
 import 'package:podsync/ui/selection.dart';
 
 import 'phone_features_test.dart' show pump, one, two;
@@ -135,6 +138,46 @@ void main() {
         .getSize(find.byTooltip('Back ${lib.skipBackSec}s'))
         .width;
     expect(after, greaterThan(before));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Podcasts can be a grid or a list, with a chosen grid size', (
+    tester,
+  ) async {
+    final (lib, _) = await pump(tester, const MobileShell());
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Podcasts'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(GridView), findsOneWidget);
+    final three = tester.getSize(find.byType(Art).first).width;
+    await tester.tap(find.byTooltip('Grid size'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('5 per row'));
+    await tester.pumpAndSettle();
+    expect(lib.settings.gridColumns, 5);
+    expect(tester.getSize(find.byType(Art).first).width, lessThan(three));
+
+    await tester.tap(find.byTooltip('Show as a list'));
+    await tester.pumpAndSettle();
+    expect(find.byType(GridView), findsNothing);
+    expect(lib.settings.podcastsViewFor(false), 'list');
+    expect(find.byTooltip('Grid size'), findsNothing);
+  });
+
+  testWidgets('on e-ink the grid is paged and names each podcast', (
+    tester,
+  ) async {
+    final (lib, _) = await pump(tester, const MobileShell(), eink: true);
+    lib.setSetting('podcastsView', 'grid');
+    await tester.tap(find.text('Podcasts'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Scrollable), findsNothing);
+    expect(find.byType(PagedGrid<Podcast>), findsOneWidget);
+    expect(find.textContaining('/ 1'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

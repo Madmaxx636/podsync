@@ -112,6 +112,8 @@ class AppSettings {
     'playerBarSize': 'medium', // phone: height of the bar at the bottom, small|medium|large|huge
     'playerBarButtons':
         'rewind,play,forward,next', // phone: buttons on that bar, in order
+    'podcastsView': '', // phone: '' (grid, or list on e-ink) | grid | list
+    'gridColumns': 3, // phone: podcasts per row in the grid
     'playerBarButtonPct': 100, // phone: size of the bar's buttons, percent
     'playerControlPct':
         100, // phone: size of the player screen's controls, percent
@@ -370,6 +372,13 @@ class AppSettings {
     return out.contains('play') ? out : ['play', ...out];
   }
 
+  /// 'grid' or 'list': what you chose, else a grid in colour and a list on e-ink.
+  String podcastsViewFor(bool eink) {
+    final v = _get('podcastsView');
+    return v == 'grid' || v == 'list' ? v : (eink ? 'list' : 'grid');
+  }
+
+  int get gridColumns => (_get('gridColumns') as int).clamp(2, 6);
   int get playerBarButtonPct => _get('playerBarButtonPct');
   int get playerControlPct => _get('playerControlPct');
   int get playerLift => _get('playerLift');

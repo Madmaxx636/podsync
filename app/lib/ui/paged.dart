@@ -151,6 +151,131 @@ class _PagedListState<T> extends State<PagedList<T>> {
   }
 }
 
+/// A grid that never scrolls: [columns] equal tiles per row, as many whole rows as fit, and
+/// Prev / Next to move between pages (or a horizontal swipe). [tileExtra] is the height added
+/// under each square tile (for a caption).
+class PagedGrid<T> extends StatefulWidget {
+  const PagedGrid({
+    super.key,
+    required this.items,
+    required this.columns,
+    required this.itemBuilder,
+    this.tileExtra = 0,
+    this.empty = 'Nothing here',
+  });
+
+  final List<T> items;
+  final int columns;
+  final double tileExtra;
+  final Widget Function(BuildContext, T) itemBuilder;
+  final String empty;
+
+  @override
+  State<PagedGrid<T>> createState() => _PagedGridState<T>();
+}
+
+class _PagedGridState<T> extends State<PagedGrid<T>> {
+  int page = 0;
+  static const barHeight = 56.0;
+  static const gap = 8.0;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      final swipe = context.read<Library>().settings.einkSwipe;
+      final inset = MediaQuery.viewPaddingOf(context).bottom;
+      final avail = c.maxHeight - barHeight - inset - gap;
+      final cols = widget.columns;
+      final tileW = (c.maxWidth - gap * (cols + 1)) / cols;
+      final tileH = tileW + widget.tileExtra;
+      final rows = max(1, ((avail + gap) / (tileH + gap)).floor());
+      final perPage = rows * cols;
+      final pages = max(1, (widget.items.length / perPage).ceil());
+      if (page >= pages) page = pages - 1;
+      final slice = widget.items.skip(page * perPage).take(perPage).toList();
+
+      void go(int delta) {
+        final n = (page + delta).clamp(0, pages - 1);
+        if (n != page) setState(() => page = n);
+      }
+
+      return Column(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragEnd: !swipe
+                  ? null
+                  : (d) {
+                      final v = d.primaryVelocity ?? 0;
+                      if (v < -200) go(1);
+                      if (v > 200) go(-1);
+                    },
+              child: widget.items.isEmpty
+                  ? Center(
+                      child: Text(
+                        widget.empty,
+                        style: const TextStyle(fontSize: 20),
+                      ),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.fromLTRB(gap, gap, gap, 0),
+                      child: Wrap(
+                        spacing: gap,
+                        runSpacing: gap,
+                        children: [
+                          for (final item in slice)
+                            SizedBox(
+                              width: tileW,
+                              height: tileH,
+                              child: widget.itemBuilder(context, item),
+                            ),
+                        ],
+                      ),
+                    ),
+            ),
+          ),
+          SizedBox(
+            height: barHeight + inset,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: inset),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: page > 0 ? () => go(-1) : null,
+                      child: const Text(
+                        '←  Prev',
+                        style: TextStyle(fontSize: 20),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${page + 1} / $pages',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Expanded(
+                    child: TextButton(
+                      onPressed: page < pages - 1 ? () => go(1) : null,
+                      child: const Text(
+                        'Next  →',
+                        style: TextStyle(fontSize: 20),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 /// Long text split into screen-sized pages (for episode notes in e-ink mode).
 class PagedText extends StatefulWidget {
   const PagedText(

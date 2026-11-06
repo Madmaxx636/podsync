@@ -179,6 +179,8 @@ class _MobileShellState extends State<MobileShell> {
                             ),
                           ]
                         : [
+                            if (section == _Section.podcasts)
+                              ..._podcastViewActions(context, lib),
                             if (lib.signedIn)
                               IconButton(
                                 tooltip: 'Sync',
@@ -210,6 +212,33 @@ class _MobileShellState extends State<MobileShell> {
         );
       },
     );
+  }
+
+  /// On the Podcasts screen: switch between grid and list, and (grid) pick how many per row.
+  List<Widget> _podcastViewActions(BuildContext context, Library lib) {
+    final grid = lib.settings.podcastsViewFor(lib.einkMode) == 'grid';
+    return [
+      IconButton(
+        tooltip: grid ? 'Show as a list' : 'Show as a grid',
+        icon: Icon(grid ? Icons.view_list : Icons.grid_view),
+        onPressed: () => lib.setSetting('podcastsView', grid ? 'list' : 'grid'),
+      ),
+      if (grid)
+        PopupMenuButton<int>(
+          tooltip: 'Grid size',
+          icon: const Icon(Icons.photo_size_select_large),
+          popUpAnimationStyle: lib.einkMode ? AnimationStyle.noAnimation : null,
+          onSelected: (n) => lib.setSetting('gridColumns', n),
+          itemBuilder: (c) => [
+            for (final n in [2, 3, 4, 5, 6])
+              CheckedPopupMenuItem(
+                value: n,
+                checked: n == lib.settings.gridColumns,
+                child: Text('$n per row'),
+              ),
+          ],
+        ),
+    ];
   }
 
   static const _extra = [_Section.downloads, _Section.stats, _Section.settings];
@@ -775,7 +804,8 @@ class SubscriptionsView extends StatelessWidget {
     final lib = context.watch<Library>();
     final subs = lib.subscriptions;
     final eink = lib.einkMode;
-    if (eink || subs.isEmpty) {
+    final asGrid = lib.settings.podcastsViewFor(eink) == 'grid';
+    if (!asGrid || subs.isEmpty) {
       return adaptiveList(
         context,
         subs,
@@ -784,52 +814,93 @@ class SubscriptionsView extends StatelessWidget {
         empty: 'No subscriptions yet',
       );
     }
+    final cols = lib.settings.gridColumns;
+    // E-ink pages the grid and names each podcast (grey covers are hard to tell apart).
+    if (eink) {
+      return PagedGrid<Podcast>(
+        items: subs,
+        columns: cols,
+        tileExtra: 38,
+        itemBuilder: (c, p) => _PodcastTile(p, caption: true),
+      );
+    }
     return GridView.builder(
       padding: const EdgeInsets.all(8),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 140,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: cols,
         mainAxisSpacing: 8,
         crossAxisSpacing: 8,
       ),
       itemCount: subs.length,
-      itemBuilder: (c, i) {
-        final p = subs[i];
-        final unplayed = lib
-            .episodesOf(p.feedUrl)
-            .where((e) => !lib.progressOf(e.id).played)
-            .length;
-        return InkWell(
-          onTap: () => Navigator.push(
-            c,
-            MaterialPageRoute(builder: (_) => PodcastScreen(p.feedUrl)),
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Art(p.imageUrl, size: 140),
-              if (unplayed > 0)
-                Positioned(
-                  top: 4,
-                  right: 4,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(c).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '$unplayed',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
+      itemBuilder: (c, i) => _PodcastTile(subs[i]),
+    );
+  }
+}
+
+/// One podcast in the grid: its cover with the number of unplayed episodes on it.
+class _PodcastTile extends StatelessWidget {
+  const _PodcastTile(this.p, {this.caption = false});
+  final Podcast p;
+  final bool caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<Library>();
+    final unplayed = lib
+        .episodesOf(p.feedUrl)
+        .where((e) => !lib.progressOf(e.id).played)
+        .length;
+    final cover = LayoutBuilder(
+      builder: (c, box) => Stack(
+        fit: StackFit.expand,
+        children: [
+          Art(p.imageUrl, size: box.maxWidth, gray: lib.einkMode),
+          if (unplayed > 0)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: lib.einkMode
+                      ? Colors.black
+                      : Theme.of(c).colorScheme.primary,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$unplayed',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PodcastScreen(p.feedUrl)),
+      ),
+      child: caption
+          ? Column(
+              children: [
+                AspectRatio(aspectRatio: 1, child: cover),
+                Expanded(
+                  child: Text(
+                    p.displayTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-            ],
-          ),
-        );
-      },
+              ],
+            )
+          : cover,
     );
   }
 }

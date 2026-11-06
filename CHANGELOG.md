@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.2 - 2026-11-06
+
+Android.
+
+- Podcasts screen: switch between a grid of covers and a list with the buttons at the top (they sit beside the three dots), and pick how many covers fit per row, 2 to 6. The same choices are in Settings > Interface > Podcasts screen. The grid now also works on e-ink: it pages instead of scrolling and shows each podcast's name under its cover. By default it is still a grid in colour and a list on e-ink.
+
 ## 0.11.1 - 2026-11-06
 
 Android.
