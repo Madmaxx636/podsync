@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -110,14 +111,39 @@ class _MobileShellState extends State<MobileShell> {
       for (final k in lib.settings.navTabs) _Section.values.byName(k),
     ];
     final onTop = lib.settings.navPosition == 'top';
-    final nav = eink
-        ? _EinkTabs(
-            section: section,
-            tabs: tabs,
-            onSelect: _select,
-            atBottom: !onTop,
+    // The three dots sit at the end of the tab bar, wherever the tab bar is.
+    final menu = _overflowMenu(context, lib, tabs);
+    final navBar = eink
+        ? Row(
+            children: [
+              Expanded(
+                child: _EinkTabs(
+                  section: section,
+                  tabs: tabs,
+                  onSelect: _select,
+                  atBottom: !onTop,
+                ),
+              ),
+              menu,
+            ],
           )
-        : _bottomNav(context, lib, tabs);
+        : ColoredBox(
+            color:
+                Theme.of(context).navigationBarTheme.backgroundColor ??
+                Theme.of(context).colorScheme.surfaceContainer,
+            child: Row(
+              children: [
+                Expanded(child: _bottomNav(context, lib, tabs)),
+                menu,
+              ],
+            ),
+          );
+
+    // Long-press the tab bar to choose and reorder the tabs.
+    final nav = _LongPressAnywhere(
+      onLongPress: () => showNavTabsDialog(context, lib),
+      child: navBar,
+    );
 
     // Back goes to the section you came from; from the first one it leaves the app. While
     // episodes are selected it clears the selection first.
@@ -164,7 +190,6 @@ class _MobileShellState extends State<MobileShell> {
                                       },
                                 icon: const Icon(Icons.sync),
                               ),
-                            _overflowMenu(context, lib, tabs),
                           ],
                   ),
                   if (onTop) nav,
@@ -207,6 +232,7 @@ class _MobileShellState extends State<MobileShell> {
     return PopupMenuButton<_Section>(
       tooltip: 'Menu',
       icon: const Icon(Icons.more_vert),
+      popUpAnimationStyle: lib.einkMode ? AnimationStyle.noAnimation : null,
       onSelected: _select,
       itemBuilder: (c) => [
         for (final s in items)
@@ -257,6 +283,52 @@ class _MobileShellState extends State<MobileShell> {
     final icon = Icon(_icons[s]);
     return n == 0 ? icon : Badge(label: Text('$n'), child: icon);
   }
+}
+
+/// Calls [onLongPress] when a finger stays down on [child] for about half a second without moving,
+/// even over buttons that handle presses themselves (a tab, for one). Taps still reach them.
+class _LongPressAnywhere extends StatefulWidget {
+  const _LongPressAnywhere({required this.child, required this.onLongPress});
+  final Widget child;
+  final VoidCallback onLongPress;
+
+  @override
+  State<_LongPressAnywhere> createState() => _LongPressAnywhereState();
+}
+
+class _LongPressAnywhereState extends State<_LongPressAnywhere> {
+  Timer? _timer;
+  Offset _start = Offset.zero;
+
+  void _cancel() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  void dispose() {
+    _cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Listener(
+    behavior: HitTestBehavior.translucent,
+    onPointerDown: (e) {
+      _start = e.position;
+      _cancel();
+      _timer = Timer(const Duration(milliseconds: 550), () {
+        _timer = null;
+        widget.onLongPress();
+      });
+    },
+    onPointerMove: (e) {
+      if ((e.position - _start).distance > 12) _cancel();
+    },
+    onPointerUp: (_) => _cancel(),
+    onPointerCancel: (_) => _cancel(),
+    child: widget.child,
+  );
 }
 
 /// The big bold title at the top of each screen, with its actions at the right.
@@ -1096,6 +1168,9 @@ class EpisodeTile extends StatelessWidget {
 
     showModalBottomSheet(
       context: context,
+      sheetAnimationStyle: context.read<Library>().einkMode
+          ? AnimationStyle.noAnimation
+          : null,
       isScrollControlled: true,
       builder: (c) {
         final rowHeight = eink ? 48.0 : 46.0;
@@ -1223,10 +1298,7 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
     if (player.current?.id != e.id) await player.play(e);
     await player.seek(Duration(milliseconds: c.startMs));
     if (mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const PlayerScreen()),
-      );
+      Navigator.push(context, playerRoute(context));
     }
   }
 
@@ -1302,10 +1374,7 @@ class _EpisodeScreenState extends State<EpisodeScreen> {
           label: 'Play',
           onTap: () {
             player.play(e);
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const PlayerScreen()),
-            );
+            Navigator.push(context, playerRoute(context));
           },
         ),
         _TextAction(
@@ -1705,22 +1774,32 @@ class MiniPlayer extends StatelessWidget {
     final total = player.duration.inMilliseconds;
     final cs = Theme.of(context).colorScheme;
     // The bar's height, and with it the cover, text and buttons, follows Settings > Interface.
-    // Small and medium keep everything on one line; large and extra large put the buttons on a
-    // second, bigger line so they stay easy to hit and the title keeps its room.
+    // The bar's height follows its size setting, and the buttons follow their own size setting
+    // on top. When the buttons would crowd the title they go on a second, bigger row; the large
+    // sizes always do.
     final size = lib.settings.playerBarSize;
-    final twoRows = size == 'large' || size == 'huge';
     final h = switch (size) {
       'small' => 52.0,
       'large' => 64.0,
       'huge' => 76.0,
       _ => 62.0,
     };
-    final k = switch (size) {
+    final base = switch (size) {
       'small' => 52 / 62,
       'large' => 1.25,
       'huge' => 1.6,
       _ => 1.0,
     };
+    final k = base * 1.15 * lib.settings.playerBarButtonPct / 100;
+    final buttons = lib.settings.playerBarButtons;
+    final tk = base > 1
+        ? 1 + (base - 1) * 0.5
+        : 1.0; // the text grows a little with the bar
+    final needed = (buttons.length - 1) * 46 * k + 36 * k + 16;
+    final twoRows =
+        size == 'large' ||
+        size == 'huge' ||
+        needed > MediaQuery.sizeOf(context).width * 0.5;
     Widget barButton(String key) {
       switch (key) {
         case 'rewind':
@@ -1775,15 +1854,12 @@ class MiniPlayer extends StatelessWidget {
               minHeight: 3,
             ),
             InkWell(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const PlayerScreen()),
-              ),
+              onTap: () => Navigator.push(context, playerRoute(context)),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   SizedBox(
-                    height: h,
+                    height: twoRows ? h : max(h, 58 * k),
                     child: Row(
                       children: [
                         Art(e.imageUrl, size: h, radius: 0, gray: eink),
@@ -1799,8 +1875,7 @@ class MiniPlayer extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
-                                  fontSize:
-                                      15 * (k > 1 ? 1 + (k - 1) * 0.5 : 1),
+                                  fontSize: 15 * tk,
                                 ),
                               ),
                               Text(
@@ -1808,8 +1883,7 @@ class MiniPlayer extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontSize:
-                                      13 * (k > 1 ? 1 + (k - 1) * 0.5 : 1),
+                                  fontSize: 13 * tk,
                                   color: eink
                                       ? Colors.black
                                       : cs.onSurfaceVariant,
@@ -1819,19 +1893,16 @@ class MiniPlayer extends StatelessWidget {
                           ),
                         ),
                         if (!twoRows)
-                          for (final key in lib.settings.playerBarButtons)
-                            barButton(key),
+                          for (final key in buttons) barButton(key),
                         const SizedBox(width: 4),
                       ],
                     ),
                   ),
                   if (twoRows)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        for (final key in lib.settings.playerBarButtons)
-                          barButton(key),
-                      ],
+                    Wrap(
+                      alignment: WrapAlignment.spaceEvenly,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [for (final key in buttons) barButton(key)],
                     ),
                 ],
               ),
@@ -1841,6 +1912,30 @@ class MiniPlayer extends StatelessWidget {
       ),
     );
   }
+}
+
+/// How the player screen opens: it slides up from the bottom and slides back down when closed.
+/// On e-ink it just appears and disappears, with no animation at all.
+Route<void> playerRoute(BuildContext context) {
+  if (context.read<Library>().einkMode) {
+    return PageRouteBuilder<void>(
+      pageBuilder: (_, _, _) => const PlayerScreen(),
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+    );
+  }
+  return PageRouteBuilder<void>(
+    pageBuilder: (_, _, _) => const PlayerScreen(),
+    transitionDuration: const Duration(milliseconds: 320),
+    reverseTransitionDuration: const Duration(milliseconds: 260),
+    transitionsBuilder: (_, animation, _, child) => SlideTransition(
+      position: Tween(
+        begin: const Offset(0, 1),
+        end: Offset.zero,
+      ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(animation),
+      child: child,
+    ),
+  );
 }
 
 /// A skip or next button on the bottom bar: the icon with its length (when it has one) under it.
@@ -1917,6 +2012,9 @@ class PlayerScreen extends StatelessWidget {
           )
         : _showPlayerSheet(context, e);
 
+    // The player screen's controls scale together (Settings > Interface > Player screen).
+    final sc = lib.settings.playerControlPct / 100;
+
     // An icon with a small label under it, like AntennaPod's speed and skip controls.
     Widget control(
       IconData icon,
@@ -1927,19 +2025,19 @@ class PlayerScreen extends StatelessWidget {
       message: tooltip,
       child: InkResponse(
         onTap: onTap,
-        radius: 36,
+        radius: 36 * sc,
         child: SizedBox(
-          width: 58,
-          height: 64,
+          width: 58 * sc,
+          height: 64 * sc,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 34),
+              Icon(icon, size: 34 * sc),
               const SizedBox(height: 2),
               Text(
                 label,
-                style: const TextStyle(
-                  fontSize: 14,
+                style: TextStyle(
+                  fontSize: 14 * sc,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1981,7 +2079,7 @@ class PlayerScreen extends StatelessWidget {
         default:
           return PlayCircle(
             playing: player.playing,
-            size: 76,
+            size: 76 * sc,
             eink: eink,
             filled: true,
             onTap: player.toggle,
@@ -1992,8 +2090,11 @@ class PlayerScreen extends StatelessWidget {
     // The speed button honours the older "show speed" switch too.
     final controls = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      // A wrap, so very large controls drop to a second line instead of overflowing.
+      child: Wrap(
+        alignment: WrapAlignment.spaceEvenly,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: 4,
         children: [
           for (final key in lib.settings.playerButtons)
             if (key != 'speed' || lib.settings.uiPlayerSpeed) playerButton(key),
@@ -2199,6 +2300,9 @@ class PlayerScreen extends StatelessWidget {
 void _showPlayerSheet(BuildContext context, Episode e) {
   showModalBottomSheet<void>(
     context: context,
+    sheetAnimationStyle: context.read<Library>().einkMode
+        ? AnimationStyle.noAnimation
+        : null,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (_) => DraggableScrollableSheet(

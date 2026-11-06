@@ -215,6 +215,16 @@ List<SettingsCategory> settingsCategories(
               'Make everything bigger in a big window and smaller in a small one, on top of the size above',
             ),
         ],
+        if (lib.einkMode && android)
+          choice<double>(
+            'zoom',
+            'Interface size',
+            'Scales everything: text, buttons, covers and spacing',
+            {
+              for (final z in [0.8, 0.9, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0])
+                z == 1.0 ? '100% (default)' : '${(z * 100).round()}%': z,
+            },
+          ),
         if (lib.einkMode)
           choice<double>(
             'textScale',
@@ -314,6 +324,12 @@ List<SettingsCategory> settingsCategories(
           'Choose which buttons the bar shows and their order',
           (c) => showPlayerBarDialog(c, lib),
         ),
+        _sizeItem(
+          lib,
+          'playerBarButtonPct',
+          'Bar button size',
+          'How big the buttons on the bar are',
+        ),
       ],
       if (android) ...[
         const HeaderItem('Player screen'),
@@ -321,6 +337,12 @@ List<SettingsCategory> settingsCategories(
           'Buttons',
           'Choose which buttons show under the seek bar and their order',
           (c) => showPlayerButtonsDialog(c, lib),
+        ),
+        _sizeItem(
+          lib,
+          'playerControlPct',
+          'Button size',
+          'How big the controls under the seek bar are',
         ),
         choice<int>(
           'playerLift',
@@ -1867,6 +1889,33 @@ class _ScaleRowState extends State<_ScaleRow> {
   }
 }
 
+/// A size in percent (a slider with 1% steps); e-ink pages cannot hold a slider, so they pick
+/// from a few sizes.
+SettingItem _sizeItem(Library lib, String key, String title, String sub) =>
+    lib.einkMode
+    ? ChoiceItem.typed(
+        title,
+        sub,
+        () => lib.settings[key] as int,
+        (v) => lib.setSetting(key, v),
+        {
+          'Smaller': 80,
+          'Normal': 100,
+          'Large': 130,
+          'Larger': 160,
+          'Largest': 200,
+        },
+        format: (v) => '$v%',
+      )
+    : ScaleItem(
+        title,
+        sub,
+        () => lib.settings[key] as int,
+        (v) => lib.setSetting(key, v),
+        min: 60,
+        max: 250,
+      );
+
 const _navNames = {
   'queue': 'Queue',
   'episodes': 'Episodes',
@@ -1908,9 +1957,9 @@ Future<void> _showOrderDialog(
           height: 60.0 * order.length + 8,
           child: ReorderableListView(
             buildDefaultDragHandles: true,
+            // The new index already allows for the row being lifted out.
             onReorderItem: (from, to) => setState(() {
-              final item = order.removeAt(from);
-              order.insert(to > from ? to - 1 : to, item);
+              order.insert(to, order.removeAt(from));
             }),
             children: [
               for (final k in order)

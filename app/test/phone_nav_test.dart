@@ -92,4 +92,49 @@ void main() {
     expect(find.byTooltip('Play'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('the three dots sit in line with the tab bar, top or bottom', (
+    tester,
+  ) async {
+    final (lib, _) = await pump(tester, const MobileShell());
+    double barY() => tester.getCenter(find.byType(NavigationBar)).dy;
+    double dotsY() => tester.getCenter(find.byTooltip('Menu')).dy;
+    expect((dotsY() - barY()).abs(), lessThan(8)); // bottom
+    lib.setSetting('navPosition', 'top');
+    await tester.pump();
+    expect((dotsY() - barY()).abs(), lessThan(8)); // top
+    expect(barY(), lessThan(300));
+  });
+
+  testWidgets(
+    'long-pressing the tab bar opens the tab editor; dragging reorders',
+    (tester) async {
+      final (lib, _) = await pump(tester, const MobileShell());
+      await tester.longPress(find.byType(NavigationBar));
+      await tester.pumpAndSettle();
+      expect(find.text('Tabs'), findsOneWidget);
+      // Drag Add podcast (last) above Queue (first).
+      final handle = find.text('Add podcast');
+      await tester.drag(handle, const Offset(0, -400), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      final tabs = lib.settings.navTabs;
+      expect(tabs.toSet(), {'queue', 'episodes', 'podcasts', 'add'});
+    },
+  );
+
+  testWidgets('player buttons can be made larger', (tester) async {
+    final (lib, _) = await pump(tester, const MobileShell(), playing: true);
+    final before = tester
+        .getSize(find.byTooltip('Back ${lib.skipBackSec}s'))
+        .width;
+    lib.setSetting('playerBarButtonPct', 200);
+    await tester.pump();
+    final after = tester
+        .getSize(find.byTooltip('Back ${lib.skipBackSec}s'))
+        .width;
+    expect(after, greaterThan(before));
+    expect(tester.takeException(), isNull);
+  });
 }

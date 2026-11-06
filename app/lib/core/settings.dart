@@ -112,6 +112,9 @@ class AppSettings {
     'playerBarSize': 'medium', // phone: height of the bar at the bottom, small|medium|large|huge
     'playerBarButtons':
         'rewind,play,forward,next', // phone: buttons on that bar, in order
+    'playerBarButtonPct': 100, // phone: size of the bar's buttons, percent
+    'playerControlPct':
+        100, // phone: size of the player screen's controls, percent
     'playerButtons': 'speed,rewind,play,forward,next', // phone player screen: buttons, in order
     'playerLift':
         0, // phone player screen: dp the buttons are raised from the bottom
@@ -367,6 +370,8 @@ class AppSettings {
     return out.contains('play') ? out : ['play', ...out];
   }
 
+  int get playerBarButtonPct => _get('playerBarButtonPct');
+  int get playerControlPct => _get('playerControlPct');
   int get playerLift => _get('playerLift');
   List<String> get playerButtons {
     const all = ['speed', 'rewind', 'play', 'forward', 'next'];

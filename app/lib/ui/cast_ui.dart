@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../core/cast.dart';
 import '../core/cast_net/device.dart';
+import '../core/library.dart';
 
 /// The cast icon on the player screen: pick a TV or speaker, or see and stop what is casting.
 /// Not shown where there is no [CastController] (everything but Android).
@@ -67,6 +69,9 @@ class CastStrip extends StatelessWidget {
 Future<void> showCastSheet(BuildContext context, CastController cast) {
   return showModalBottomSheet<void>(
     context: context,
+    sheetAnimationStyle: context.read<Library>().einkMode
+        ? AnimationStyle.noAnimation
+        : null,
     showDragHandle: true,
     isScrollControlled: true,
     builder: (c) => SafeArea(

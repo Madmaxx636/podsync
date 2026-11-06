@@ -40,4 +40,29 @@ void main() {
       expect(player.playing, isFalse);
     },
   );
+
+  test(
+    'starting another episode while casting loads it on the TV, not the phone',
+    () async {
+      final lib = Library();
+      final player = PlayerController(lib);
+      final cast = _FakeCast();
+      Episode ep(String g) => Episode(
+        feedUrl: 'f',
+        guid: g,
+        title: g,
+        audioUrl: 'http://x.test/$g.mp3',
+        published: 0,
+      );
+      final a = ep('a'), b = ep('b');
+      lib.episodes[a.id] = a;
+      lib.episodes[b.id] = b;
+      player.current = a;
+      await player.startCast(cast);
+      await player.play(b);
+      expect(cast.calls, ['load ${b.id}']);
+      expect(player.current, b);
+      expect(player.error, isNull); // nothing was opened on the phone
+    },
+  );
 }

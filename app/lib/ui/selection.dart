@@ -84,6 +84,9 @@ class SelectionBar extends StatelessWidget {
 
       void more() => showModalBottomSheet<void>(
         context: context,
+        sheetAnimationStyle: context.read<Library>().einkMode
+            ? AnimationStyle.noAnimation
+            : null,
         builder: (c) => SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,

@@ -60,6 +60,10 @@ class PlayerController extends ChangeNotifier {
   /// Set while the episode plays on a TV or speaker (Cast) instead of this device.
   CastOutput? cast;
 
+  /// The episode this device's own player has loaded. While casting it can differ from
+  /// [current] (the TV moved on to another episode), so stopping the cast reloads it.
+  String? _loadedId;
+
   Episode? current;
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
@@ -100,6 +104,11 @@ class PlayerController extends ChangeNotifier {
       await remote.load(e, position);
       return;
     }
+    await _open(e, start: true);
+  }
+
+  /// Loads [e] into this device's player at [position]; with [start] it also starts playing.
+  Future<void> _open(Episode e, {required bool start}) async {
     try {
       // Prefer the downloaded copy; if it will not open, fall back to streaming.
       final local = downloads?.pathOf(e.id);
@@ -123,12 +132,13 @@ class PlayerController extends ChangeNotifier {
           initialPosition: position,
         );
       }
+      _loadedId = e.id;
       await _player.setSpeed(library.speedFor(e.feedUrl));
       _silenceApplied = null;
       await _applySkipSilence();
       _volumeApplied = null;
       await _applyVolume();
-      _player.play();
+      if (start) _player.play();
     } catch (err) {
       error = 'Could not play this episode: $err';
       notifyListeners();
@@ -161,11 +171,16 @@ class PlayerController extends ChangeNotifier {
     if (cast == null) return;
     cast = null;
     playing = false;
-    if (current != null) {
-      try {
-        await _player.seek(position);
-      } catch (_) {}
-      if (resume) _player.play();
+    final e = current;
+    if (e != null) {
+      if (_loadedId != e.id) {
+        await _open(e, start: resume);
+      } else {
+        try {
+          await _player.seek(position);
+        } catch (_) {}
+        if (resume) _player.play();
+      }
     }
     notifyListeners();
   }

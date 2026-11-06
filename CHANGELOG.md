@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.1 - 2026-11-06
+
+Android.
+
+- Casting: if you started a different episode while casting and then stopped, the phone used to start the first episode again. It now carries on with the episode you were actually listening to, from where the TV had got to.
+- The three dots now sit at the end of the tab bar, wherever the tab bar is: in line with it at the top, or in line with it at the bottom.
+- Tab bar: long-press it to choose and reorder the tabs (the same editor as Settings > Interface > Navigation > Tabs). Fixed that editor putting a dragged tab in the wrong place.
+- Player bar at the bottom: the buttons are bigger by default and have their own size setting (Settings > Interface > Player bar > Bar button size). When they get big they move to a second row so the title keeps its room.
+- Player screen: a Button size setting scales the controls under the seek bar; very large controls wrap onto a second line instead of running off the screen.
+- The player screen slides up from the bottom and slides back down when closed. On e-ink it appears and disappears with no animation, and so do the three-dot menu and the sheets.
+- Interface size (scales the whole app, not just text) is now also on e-ink screens, as a choice of sizes.
+
 ## 0.11.0 - 2026-11-06
 
 Android.
