@@ -22,9 +22,14 @@ jobs:
           # IPv6 to the package mirrors is what usually hangs; force IPv4 and give up on slow connections.
           APT="-o Acquire::ForceIPv4=true -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
           for attempt in 1 2 3; do
-            sudo apt-get update $APT && \
-            timeout 240 sudo apt-get install -y $APT clang cmake ninja-build pkg-config libgtk-3-dev libmpv-dev libasound2-dev libayatana-appindicator3-dev libnotify-dev && break
-            echo "apt attempt $attempt failed, retrying"; sleep 10
+            # SIGKILL on the whole thing: a plain timeout leaves apt's download helper hung on the mirror.
+            sudo timeout -s KILL 120 apt-get update $APT && \
+            sudo timeout -s KILL 300 apt-get install -y $APT clang cmake ninja-build pkg-config libgtk-3-dev libmpv-dev libasound2-dev libayatana-appindicator3-dev libnotify-dev && break
+            echo "apt attempt $attempt failed, retrying"
+            sudo pkill -9 -f 'apt-get|/usr/lib/apt/methods' || true
+            sudo rm -f /var/lib/dpkg/lock* /var/lib/apt/lists/lock /var/cache/apt/archives/lock
+            sudo dpkg --configure -a || true
+            sleep 10
           done
           dpkg -s libgtk-3-dev libmpv-dev libayatana-appindicator3-dev libnotify-dev >/dev/null
 
