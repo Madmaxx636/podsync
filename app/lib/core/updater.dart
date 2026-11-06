@@ -156,6 +156,13 @@ class UpdateController extends ChangeNotifier {
           if (name == want) asset = url;
           if (name == 'SHA256SUMS.txt') sums = url;
         }
+        // A release without this platform's installer (an Android-only release on a desktop,
+        // say) is not an update for it.
+        if (asset == null) {
+          available = null;
+          if (manual) message = 'PodSync $current is the latest version';
+          return;
+        }
         available = UpdateInfo(
           version: tag,
           notes: (j['body'] as String? ?? '').trim(),
