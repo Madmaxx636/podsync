@@ -2,6 +2,12 @@ name: Linux build
 
 on:
   push:
+    paths-ignore:
+      - 'app/android/**'
+      - 'app/lib/core/audio_handler.dart'
+      - 'app/lib/core/widget_bridge.dart'
+      - '.github/workflows/android.yml'
+      - 'CHANGELOG.md'
   workflow_dispatch:
 
 jobs:
