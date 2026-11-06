@@ -2,6 +2,7 @@
 # Publishes the builds of the current commit as release vX.Y.Z on the public releases repository
 # (the one the apps check for updates) and on this repository.
 #   tools/release.sh 0.3.0            all platforms
+#   tools/release.sh 0.3.2 --desktop  Windows and Linux only (needs just those two builds)
 #   tools/release.sh 0.3.1 --android  Android only: needs just the Android build and ships just
 #                                     the APK (the desktop apps ignore a release without their installer)
 # Needs: `gh` logged in, CI finished and green for HEAD (Windows, Android, Linux), the
@@ -9,7 +10,8 @@
 set -euo pipefail
 V="${1:?usage: tools/release.sh X.Y.Z [--android]}"
 android_only=false; [ "${2:-}" = "--android" ] && android_only=true
-if $android_only; then builds=("Android build"); files=(PodSync-android.apk); else builds=("Windows build" "Android build" "Linux build"); files=(PodSync-Setup-x64.exe PodSync-android.apk PodSync-linux-x64.tar.gz PodSync-linux-x64.deb); fi
+if [ "${2:-}" = "--desktop" ]; then builds=("Windows build" "Linux build"); files=(PodSync-Setup-x64.exe PodSync-linux-x64.tar.gz PodSync-linux-x64.deb)
+elif $android_only; then builds=("Android build"); files=(PodSync-android.apk); else builds=("Windows build" "Android build" "Linux build"); files=(PodSync-Setup-x64.exe PodSync-android.apk PodSync-linux-x64.tar.gz PodSync-linux-x64.deb); fi
 cd "$(dirname "$0")/.."
 HEAD_SHA=$(git rev-parse HEAD)
 grep -q "^version: $V+" app/pubspec.yaml || { echo "app/pubspec.yaml is not at version $V"; exit 1; }

@@ -226,9 +226,19 @@ void main() {
       rig.lib.setProgress(two, 5 * 60000, 20 * 60000);
       await tester.tap(find.text('Statistics').first);
       await tester.pumpAndSettle();
-      expect(find.text('listened'), findsOneWidget);
-      expect(find.text('By podcast'), findsOneWidget);
-      expect(find.textContaining('listened · 1 of 2 played'), findsOneWidget);
+      expect(find.text('Listened in total'), findsOneWidget);
+      expect(find.textContaining('1 of 2 played'), findsOneWidget);
+      await tester.tap(find.text('Years'));
+      await tester.pumpAndSettle();
+      expect(find.text('Time played per month'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(SegmentedButton<int>),
+          matching: find.text('Downloads'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('episodes on the device'), findsOneWidget);
     });
 
     testWidgets('sleep timer from the toolbar and the Controls menu', (
@@ -300,7 +310,7 @@ void main() {
       expect(find.text('Statistics'), findsOneWidget);
       await tester.tap(find.text('Statistics'));
       await tester.pumpAndSettle();
-      expect(find.text('listened'), findsOneWidget);
+      expect(find.text('Listened in total'), findsOneWidget);
     });
 
     testWidgets(

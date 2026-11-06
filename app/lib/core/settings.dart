@@ -107,6 +107,10 @@ class AppSettings {
     'confirmClearQueue': false, // Clear has Undo, so asking first is optional
     'colRating': true,
     'colStarts': true,
+    'autoScale':
+        false, // scale the interface with the window size (this device)
+    'colStartsAt': true,
+    'colEndsAt': true,
     'sidebarWidth': 200.0,
     // Top bar layout (Customize Toolbar): the order of its parts and their sizes
     'toolbarOrder':
@@ -333,6 +337,9 @@ class AppSettings {
   bool get uiPhoneFilters => _get('uiPhoneFilters');
   bool get uiRowDownloadIcon => _get('uiRowDownloadIcon');
   bool get colStarts => _get('colStarts');
+  bool get autoScale => _get('autoScale');
+  bool get colStartsAt => _get('colStartsAt');
+  bool get colEndsAt => _get('colEndsAt');
   bool get colDownload => _get('colDownload');
   String get storeCountry => _get('storeCountry');
   bool get autoDownloadQueue => _get('autoDownloadQueue');
@@ -366,7 +373,8 @@ class AppSettings {
   ];
 
   /// Changes whenever something that affects the app-wide theme changes.
-  String get appearanceKey => '$themeMode|$accent|$textScale|$compact|$zoom';
+  String get appearanceKey =>
+      '$themeMode|$accent|$textScale|$compact|$zoom|$autoScale';
 
   String get effectiveUserAgent =>
       userAgent.isEmpty ? 'PodSync/0.1' : userAgent;

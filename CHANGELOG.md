@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0 - 2026-11-06
+
+- Up Next: the column headings no longer re-sort the queue; the order is only what you set by dragging or with Move to Top / Bottom. Time left now counts down while the episode plays. New Starts at and Ends at columns show the clock time each episode would begin and end, at each podcast's playback speed (Tomorrow or the weekday is added when it is not today). Turn them on or off in the column menu, View > Columns and Settings.
+- Selecting several episodes: Ctrl-click, Shift-click or Ctrl+A in any episode list. A bar appears under the list with Add to / Remove from Up Next, Move to top and bottom (Up Next), Download, Delete downloads, Mark played or unplayed and Favorite for the whole selection; the right-click menu still works on it too.
+- Sizes: Settings > Appearance has an Interface size slider (50% to 250%) and a Text size slider (70% to 200%), each with - and + buttons that change it by exactly 1%, the number beside the slider and a reset. New Scale with the window option makes everything grow and shrink with the window width.
+- Statistics redone with three pages: Subscriptions (a gauge with your total listening time split between your three biggest podcasts and the rest, and a ranked list with bars), Years (time played per month as bars coloured by year, with the total for each year) and Downloads (a gauge with the total size and the size per podcast).
+
 ## 0.9.1 - 2026-11-06
 
 - Android notification: the back and forward buttons now use your own skip lengths from Settings (5 to 90 seconds), with the number drawn on the button and in its label, and they update when you change the setting. The notification keeps the cover, episode title and podcast name, play/pause and next, and its seek bar.

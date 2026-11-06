@@ -36,6 +36,10 @@ class LibraryStats {
   Duration listened = Duration.zero;
   Duration length = Duration.zero;
   List<PodcastStats> perPodcast = [];
+
+  /// Time listened per month, keyed year * 12 + (month - 1), counted in the month each episode
+  /// was last played. An estimate like the rest.
+  Map<int, Duration> byMonth = {};
 }
 
 /// All app data: subscriptions, episodes, progress, queue, favorites and
@@ -847,6 +851,14 @@ class Library extends ChangeNotifier {
       final heard = pr.played
           ? length
           : pr.positionMs.clamp(0, length > 0 ? length : pr.positionMs);
+      if (heard > 0 && pr.lastPlayedAt > 0) {
+        final d = DateTime.fromMillisecondsSinceEpoch(pr.lastPlayedAt);
+        out.byMonth.update(
+          d.year * 12 + d.month - 1,
+          (v) => v + Duration(milliseconds: heard),
+          ifAbsent: () => Duration(milliseconds: heard),
+        );
+      }
       ps.episodes++;
       ps.length += Duration(milliseconds: length);
       ps.listened += Duration(milliseconds: heard);

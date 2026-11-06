@@ -197,17 +197,19 @@ void main() {
     );
 
     testWidgets(
-      'clicking a column heading sorts the queue, and it can be undone',
+      'column headings do not sort Up Next, and it has Starts at and Ends at',
       (tester) async {
         final (lib, _) = await pump(tester);
         await tester.tap(find.text('Up Next').first);
         await tester.pumpAndSettle();
+        final before = [...lib.queue];
         await tester.tap(find.text('Release Date'));
         await tester.pumpAndSettle();
-        expect(lib.queue, [one, two]); // oldest first on the first click
-        await tester.tap(find.text('Release Date'));
+        await tester.tap(find.text('Name'));
         await tester.pumpAndSettle();
-        expect(lib.queue, [two, one]); // and newest first on the next
+        expect(lib.queue, before);
+        expect(find.text('Starts at'), findsOneWidget);
+        expect(find.text('Ends at'), findsOneWidget);
       },
     );
 

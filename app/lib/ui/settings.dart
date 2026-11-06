@@ -90,6 +90,22 @@ class PageItem extends SettingItem {
 }
 
 /// A caption between groups of settings. Not interactive.
+/// A size in percent: a slider you can drag, with - and + buttons that change it by exactly 1
+/// and the number shown beside it.
+class ScaleItem extends SettingItem {
+  const ScaleItem(
+    super.title,
+    super.subtitle,
+    this.get,
+    this.set, {
+    this.min = 70,
+    this.max = 200,
+  });
+  final int Function() get;
+  final void Function(int) set;
+  final int min, max;
+}
+
 class HeaderItem extends SettingItem {
   const HeaderItem(super.title);
 }
@@ -183,23 +199,43 @@ List<SettingsCategory> settingsCategories(
             },
           ),
         ],
-        if (!android && !lib.einkMode)
-          choice<double>(
-            'zoom',
-            'Zoom',
-            'Scales the whole window. Also Ctrl + mouse wheel, Ctrl + and Ctrl -',
-            {
-              for (final z in [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0])
-                z == 1.0 ? '100% (default)' : '${(z * 100).round()}%': z,
-            },
+        if (!android && !lib.einkMode) ...[
+          ScaleItem(
+            'Interface size',
+            'Scales the whole window: text, buttons and spacing. Also Ctrl + mouse wheel, Ctrl + and Ctrl -',
+            () => (lib.settings.zoom * 100).round(),
+            (v) => lib.setSetting('zoom', v / 100),
+            min: 50,
+            max: 250,
           ),
-        choice<double>('textScale', 'Text size', 'Scales all text in the app', {
-          'Small': 0.85,
-          'Default': 1.0,
-          'Large': 1.15,
-          'Larger': 1.3,
-          'Largest': 1.5,
-        }),
+          tog(
+            'autoScale',
+            'Scale with the window',
+            'Make everything bigger in a big window and smaller in a small one, on top of the size above',
+          ),
+        ],
+        if (lib.einkMode)
+          choice<double>(
+            'textScale',
+            'Text size',
+            'Scales all text in the app',
+            {
+              'Small': 0.85,
+              'Default': 1.0,
+              'Large': 1.15,
+              'Larger': 1.3,
+              'Largest': 1.5,
+            },
+          )
+        else
+          ScaleItem(
+            'Text size',
+            'Scales the text only, in steps of 1%',
+            () => (lib.settings.textScale * 100).round(),
+            (v) => lib.setSetting('textScale', v / 100),
+            min: 70,
+            max: 200,
+          ),
         if (!lib.einkMode)
           tog(
             'compact',
@@ -850,6 +886,16 @@ List<SettingsCategory> settingsCategories(
             'colStarts',
             'Starts in column',
             'In Up Next: when each episode would begin',
+          ),
+          tog(
+            'colStartsAt',
+            'Starts at column',
+            'In Up Next: the clock time each episode would begin',
+          ),
+          tog(
+            'colEndsAt',
+            'Ends at column',
+            'In Up Next: the clock time each episode would end',
           ),
           tog('colRating', 'Rating column', ''),
           tog('colDownload', 'Download status column', ''),
@@ -1598,6 +1644,8 @@ class SettingRow extends StatelessWidget {
             : heading;
       case InfoItem():
         return tile();
+      case ScaleItem():
+        return _ScaleRow(item);
     }
   }
 
@@ -1683,5 +1731,88 @@ class SettingRow extends StatelessWidget {
     );
     controller.dispose();
     if (result != null) item.set(result);
+  }
+}
+
+/// The slider row for a [ScaleItem]: shows the number live while dragging and applies the size
+/// when you let go (applying it on every pixel would resize the slider under the pointer).
+class _ScaleRow extends StatefulWidget {
+  const _ScaleRow(this.item);
+  final ScaleItem item;
+
+  @override
+  State<_ScaleRow> createState() => _ScaleRowState();
+}
+
+class _ScaleRowState extends State<_ScaleRow> {
+  int? _dragging;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final value = (_dragging ?? item.get()).clamp(item.min, item.max);
+    final muted = Theme.of(context).textTheme.bodySmall?.color;
+    void commit(int v) => item.set(v.clamp(item.min, item.max));
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            item.title,
+            style: const TextStyle(
+              fontSize: 16,
+              height: 1.2,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (item.subtitle.isNotEmpty)
+            Text(
+              item.subtitle,
+              style: TextStyle(fontSize: 14, height: 1.2, color: muted),
+            ),
+          Row(
+            children: [
+              IconButton(
+                tooltip: 'Smaller by 1%',
+                icon: const Icon(Icons.remove),
+                onPressed: value > item.min ? () => commit(value - 1) : null,
+              ),
+              Expanded(
+                child: Slider(
+                  min: item.min.toDouble(),
+                  max: item.max.toDouble(),
+                  divisions: item.max - item.min,
+                  value: value.toDouble(),
+                  onChanged: (v) => setState(() => _dragging = v.round()),
+                  onChangeEnd: (v) {
+                    setState(() => _dragging = null);
+                    commit(v.round());
+                  },
+                ),
+              ),
+              IconButton(
+                tooltip: 'Bigger by 1%',
+                icon: const Icon(Icons.add),
+                onPressed: value < item.max ? () => commit(value + 1) : null,
+              ),
+              SizedBox(
+                width: 52,
+                child: Text(
+                  '$value%',
+                  textAlign: TextAlign.end,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Back to 100%',
+                icon: const Icon(Icons.restart_alt, size: 20),
+                onPressed: value == 100 ? null : () => commit(100),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }

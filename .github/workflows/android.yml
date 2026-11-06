@@ -2,6 +2,19 @@ name: Android build
 
 on:
   push:
+    paths-ignore:
+      - 'app/lib/ui/desktop*.dart'
+      - 'app/lib/ui/zoom.dart'
+      - 'app/lib/ui/mini_player.dart'
+      - 'app/lib/core/desktop_integration.dart'
+      - 'app/lib/core/single_instance.dart'
+      - 'app/lib/core/mpris.dart'
+      - 'app/lib/core/windows_media_keys.dart'
+      - 'app/windows/**'
+      - 'app/linux/**'
+      - '.github/workflows/windows.yml'
+      - '.github/workflows/linux.yml'
+      - 'CHANGELOG.md'
   workflow_dispatch:
 
 jobs:

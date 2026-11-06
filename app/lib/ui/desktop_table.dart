@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../core/downloads.dart';
 import '../core/library.dart';
 import '../core/models.dart';
 import '../core/player.dart';
@@ -59,8 +60,6 @@ class _EpisodeTableState extends State<EpisodeTable> {
   final FocusNode _focus = FocusNode();
   String? _anchor; // where a shift-click range starts
   List<Episode> _shown = [];
-  final Map<String, bool> _queueFlip =
-      {}; // which direction each queue header sorts next
   final Map<String, double> _dragging =
       {}; // widths while a column edge is being dragged
   double _avail = 0; // width of the table, so columns cannot be dragged past it
@@ -83,6 +82,10 @@ class _EpisodeTableState extends State<EpisodeTable> {
     );
     final asc = _asc ?? (sortBy == 'date' ? s.sortOldestFirst : true);
     final queue = widget.queueMode;
+    // Up Next counts down as the episode plays: follow the player's position by the second.
+    final livePos = context.select<PlayerController, int>(
+      (p) => queue ? p.position.inSeconds : 0,
+    );
     final fixedOrder = queue || widget.keepOrder;
     final present = {for (final e in widget.episodes) e.id};
     selected.removeWhere((id) => !present.contains(id));
@@ -133,6 +136,10 @@ class _EpisodeTableState extends State<EpisodeTable> {
       if (s.colTime) _Col('time', 'Time', width: w('time', 84)),
       if (queue && s.colStarts)
         _Col('starts', 'Starts in', width: w('starts', 96)),
+      if (queue && s.colStartsAt)
+        _Col('startsAt', 'Starts at', width: w('startsAt', 110)),
+      if (queue && s.colEndsAt)
+        _Col('endsAt', 'Ends at', width: w('endsAt', 110)),
       if (showPodcast) _Col('podcast', 'Podcast', width: w('podcast', 220)),
       if (s.colRating) _Col('rating', 'Rating', width: w('rating', 92)),
       if (s.colDate) _Col('date', 'Release Date', width: w('date', 128)),
@@ -151,22 +158,53 @@ class _EpisodeTableState extends State<EpisodeTable> {
       );
     }
 
-    // When each queued episode would start, for the "Starts in" column.
+    // Time left per episode (the playing one from the player's live position) and when each
+    // queued episode would start and end, for the Starts in / Starts at / Ends at columns.
+    Duration leftOf(Episode e) {
+      if (queue && e.id == currentId && livePos > 0) {
+        final total = player.duration > Duration.zero
+            ? player.duration
+            : Duration(milliseconds: e.durationMs);
+        final left = total - Duration(seconds: livePos);
+        return left < Duration.zero ? Duration.zero : left;
+      }
+      return lib.remainingOf(e);
+    }
+
     final starts = <String, Duration>{};
+    final ends = <String, Duration>{};
     if (queue) {
-      final q = lib.queueEpisodes;
-      final offsets = lib.queueStartOffsets;
-      for (var i = 0; i < q.length; i++) {
-        starts[q[i].id] = offsets[i];
+      var ms = 0.0;
+      for (final e in lib.queueEpisodes) {
+        starts[e.id] = Duration(milliseconds: ms.round());
+        ms += leftOf(e).inMilliseconds / lib.speedFor(e.feedUrl);
+        ends[e.id] = Duration(milliseconds: ms.round());
       }
     }
+    final now = DateTime.now();
+    final use24 = MediaQuery.of(context).alwaysUse24HourFormat;
+    String clock(Duration from) {
+      final t = now.add(from);
+      final label = MaterialLocalizations.of(context).formatTimeOfDay(
+        TimeOfDay.fromDateTime(t),
+        alwaysUse24HourFormat: use24,
+      );
+      final today = DateTime(now.year, now.month, now.day);
+      final days = DateTime(t.year, t.month, t.day).difference(today).inDays;
+      if (days == 0) return label;
+      const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      return days == 1 ? 'Tomorrow $label' : '${names[t.weekday - 1]} $label';
+    }
+
     final queuePos = {for (var i = 0; i < eps.length; i++) eps[i].id: i + 1};
 
     Widget header(_Col c) {
       if (c.label.isEmpty) return SizedBox(width: c.width, child: null);
       final active = sortBy == c.key && !fixedOrder;
       final child = InkWell(
-        onTap: c.key == 'play' ? null : () => _headerTap(c.key, asc),
+        onTap: c.key == 'play' || fixedOrder
+            ? null
+            : () => _headerTap(c.key, asc),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6),
           child: Row(
@@ -317,9 +355,11 @@ class _EpisodeTableState extends State<EpisodeTable> {
               ),
             );
           case 'time':
-            final left = lib.remainingOf(e);
+            final left = leftOf(e);
             final partly =
-                !pr.played && pr.positionMs > 0 && left > Duration.zero;
+                !pr.played &&
+                (pr.positionMs > 0 || (queue && playing && livePos > 0)) &&
+                left > Duration.zero;
             return Padding(
               padding: pad,
               child: Text(
@@ -341,6 +381,20 @@ class _EpisodeTableState extends State<EpisodeTable> {
                     : (i == 0 && playing
                           ? 'Playing'
                           : fmtLong(at, zero: 'Next')),
+                style: st,
+              ),
+            );
+          case 'startsAt':
+          case 'endsAt':
+            final at = (c.key == 'startsAt' ? starts : ends)[e.id];
+            return Padding(
+              padding: pad,
+              child: Text(
+                at == null || (c.key == 'startsAt' && i == 0 && playing)
+                    ? ''
+                    : clock(at),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: st,
               ),
             );
@@ -514,6 +568,7 @@ class _EpisodeTableState extends State<EpisodeTable> {
                   ),
                 ),
                 Expanded(child: body),
+                if (selected.length > 1) _selectionBar(pal, lib, queue),
               ],
             );
           },
@@ -522,25 +577,9 @@ class _EpisodeTableState extends State<EpisodeTable> {
     );
   }
 
-  /// Clicking a column heading sorts the list; in Up Next it re-orders the queue itself (and can be undone).
+  /// Clicking a column heading sorts the list. Up Next and history keep their own order.
   void _headerTap(String key, bool asc) {
-    if (widget.queueMode) {
-      final lib = context.read<Library>();
-      final flip = _queueFlip[key] =
-          !(_queueFlip[key] ?? false); // first click: oldest / shortest first
-      final mode = switch (key) {
-        'name' => QueueSort.title,
-        'time' => flip ? QueueSort.shortest : QueueSort.longest,
-        'podcast' => QueueSort.podcast,
-        'date' => flip ? QueueSort.oldestFirst : QueueSort.newestFirst,
-        _ => null,
-      };
-      if (mode == null) return;
-      lib.sortQueue(mode, pinId: context.read<PlayerController>().current?.id);
-      showQueueUndo(context, lib, 'Up Next sorted');
-      return;
-    }
-    if (widget.keepOrder) return;
+    if (widget.queueMode || widget.keepOrder) return;
     setState(() {
       if (sortBy == key) {
         _asc = !asc;
@@ -549,6 +588,115 @@ class _EpisodeTableState extends State<EpisodeTable> {
         _asc = key != 'date' && key != 'rating';
       }
     });
+  }
+
+  /// Shown while two or more rows are selected (Ctrl-click or Shift-click): the same actions as
+  /// the right-click menu, one click away.
+  Widget _selectionBar(Pal pal, Library lib, bool queue) {
+    final dm = context.read<DownloadManager>();
+    final eps = [
+      for (final x in _shown)
+        if (selected.contains(x.id)) x,
+    ];
+    final ids = [for (final x in eps) x.id];
+    final allQueued = ids.every(lib.queue.contains);
+    final allPlayed = ids.every((id) => lib.progressOf(id).played);
+    final allFav = ids.every(lib.isFavorite);
+    Widget act(IconData icon, String label, VoidCallback onTap) => Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: TextButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 16),
+        label: Text(label),
+        style: TextButton.styleFrom(
+          foregroundColor: pal.text,
+          visualDensity: VisualDensity.compact,
+          textStyle: const TextStyle(fontSize: 12.5),
+        ),
+      ),
+    );
+    return Container(
+      height: 38,
+      decoration: BoxDecoration(
+        color: pal.header,
+        border: Border(top: BorderSide(color: pal.rule)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 10),
+          Text(
+            '${ids.length} selected',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: pal.text,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  act(
+                    allQueued ? Icons.playlist_remove : Icons.playlist_add,
+                    allQueued ? 'Remove from Up Next' : 'Add to Up Next',
+                    () {
+                      if (allQueued) {
+                        lib.removeAllFromQueue(ids);
+                        showQueueUndo(context, lib, 'Removed from Up Next');
+                      } else {
+                        lib.enqueueAll(
+                          ids.where((id) => !lib.queue.contains(id)).toList(),
+                        );
+                      }
+                    },
+                  ),
+                  if (queue) ...[
+                    act(
+                      Icons.vertical_align_top,
+                      'Move to top',
+                      () => lib.moveInQueue(ids, toTop: true),
+                    ),
+                    act(
+                      Icons.vertical_align_bottom,
+                      'Move to bottom',
+                      () => lib.moveInQueue(ids, toTop: false),
+                    ),
+                  ],
+                  act(Icons.download, 'Download', () => dm.downloadAll(eps)),
+                  act(Icons.delete_outline, 'Delete downloads', () async {
+                    for (final id in ids.where(dm.isDownloaded)) {
+                      await dm.delete(id);
+                    }
+                  }),
+                  act(
+                    allPlayed
+                        ? Icons.radio_button_unchecked
+                        : Icons.check_circle_outline,
+                    allPlayed ? 'Mark unplayed' : 'Mark played',
+                    () => lib.markAllPlayed(ids, !allPlayed),
+                  ),
+                  act(
+                    allFav ? Icons.star : Icons.star_border,
+                    allFav ? 'Unfavorite' : 'Favorite',
+                    () => lib.setFavorites(ids, !allFav),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Clear selection',
+            icon: const Icon(Icons.close, size: 16),
+            onPressed: () {
+              setState(selected.clear);
+              _notifyFocus();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   /// Right-click on the column headings, like iTunes' "choose columns".
@@ -567,7 +715,11 @@ class _EpisodeTableState extends State<EpisodeTable> {
       items: [
         item('colDownload', 'Download status', s.colDownload),
         item('colTime', 'Time', s.colTime),
-        if (widget.queueMode) item('colStarts', 'Starts in', s.colStarts),
+        if (widget.queueMode) ...[
+          item('colStarts', 'Starts in', s.colStarts),
+          item('colStartsAt', 'Starts at', s.colStartsAt),
+          item('colEndsAt', 'Ends at', s.colEndsAt),
+        ],
         if (widget.showPodcastColumn)
           item('colPodcast', 'Podcast', s.colPodcast),
         item('colRating', 'Rating', s.colRating),

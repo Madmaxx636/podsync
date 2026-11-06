@@ -9,13 +9,18 @@ import '../core/library.dart';
 
 /// Desktop zoom: the whole window scales (Ctrl + mouse wheel, Ctrl + and Ctrl -, Ctrl 0).
 class Zoom {
-  static const min = 0.7, max = 2.0, step = 0.1;
+  static const min = 0.5, max = 2.5, step = 0.1;
 
-  static double of(Library lib) => Platform.isAndroid ? 1.0 : lib.settings.zoom;
+  /// Extra factor from "scale with the window": 1.0 at 1280 px wide, set by [ZoomHost].
+  static double _auto = 1.0;
+
+  static double of(Library lib) => Platform.isAndroid
+      ? 1.0
+      : lib.settings.zoom * (lib.settings.autoScale ? _auto : 1.0);
 
   static void change(Library lib, double delta) => lib.setSetting(
     'zoom',
-    ((lib.settings.zoom + delta).clamp(min, max) * 20).round() / 20,
+    ((lib.settings.zoom + delta).clamp(min, max) * 100).round() / 100,
   );
 
   static void reset(Library lib) => lib.setSetting('zoom', 1.0);
@@ -54,7 +59,8 @@ class ZoomHost extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lib = context.read<Library>();
-    final z = context.select<Library, double>((l) => l.settings.zoom);
+    final base = context.select<Library, double>((l) => l.settings.zoom);
+    final auto = context.select<Library, bool>((l) => l.settings.autoScale);
     return Listener(
       onPointerSignal: (e) {
         if (e is PointerScrollEvent &&
@@ -63,10 +69,13 @@ class ZoomHost extends StatelessWidget {
           Zoom.change(lib, e.scrollDelta.dy < 0 ? Zoom.step : -Zoom.step);
         }
       },
-      child: z == 1.0
+      child: base == 1.0 && !auto
           ? child
           : LayoutBuilder(
               builder: (context, box) {
+                // 1280 px wide is the size the layout was drawn for.
+                Zoom._auto = (box.maxWidth / 1280).clamp(0.7, 1.8);
+                final z = base * (auto ? Zoom._auto : 1.0);
                 final w = box.maxWidth / z, h = box.maxHeight / z;
                 return ClipRect(
                   child: OverflowBox(

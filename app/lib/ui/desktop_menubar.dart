@@ -256,6 +256,8 @@ class AppMenuBar extends StatelessWidget {
                           toggle('Download status', 'colDownload'),
                           toggle('Time', 'colTime'),
                           toggle('Starts in (Up Next)', 'colStarts'),
+                          toggle('Starts at (Up Next)', 'colStartsAt'),
+                          toggle('Ends at (Up Next)', 'colEndsAt'),
                           toggle('Podcast', 'colPodcast'),
                           toggle('Rating', 'colRating'),
                           toggle('Release Date', 'colDate'),
