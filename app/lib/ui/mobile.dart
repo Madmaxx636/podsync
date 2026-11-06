@@ -18,6 +18,8 @@ import 'store_view.dart';
 import 'common.dart';
 import 'paged.dart';
 import 'podcast_settings.dart';
+import 'cast_ui.dart';
+import 'selection.dart';
 
 enum _Section { queue, episodes, podcasts, add, downloads, stats, settings }
 
@@ -104,78 +106,137 @@ class _MobileShellState extends State<MobileShell> {
       _Section.settings => const SettingsHome(),
     };
 
-    // Back goes to the section you came from; from the first one it leaves the app.
-    return PopScope(
-      canPop: _previous.isEmpty,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _previous.isNotEmpty) {
-          setState(() => section = _previous.removeLast());
-        }
-      },
-      child: Scaffold(
-        body: SafeArea(
-          bottom: false,
-          child: Column(
-            children: [
-              _ScreenHeader(
-                title: _titles[section]!,
-                actions: [
-                  if (lib.signedIn)
-                    IconButton(
-                      tooltip: 'Sync',
-                      onPressed: lib.syncing
-                          ? null
-                          : () async {
-                              await lib.sync();
-                              await lib.refreshAll();
-                            },
-                      icon: const Icon(Icons.sync),
-                    ),
+    final tabs = [
+      for (final k in lib.settings.navTabs) _Section.values.byName(k),
+    ];
+    final onTop = lib.settings.navPosition == 'top';
+    final nav = eink
+        ? _EinkTabs(
+            section: section,
+            tabs: tabs,
+            onSelect: _select,
+            atBottom: !onTop,
+          )
+        : _bottomNav(context, lib, tabs);
+
+    // Back goes to the section you came from; from the first one it leaves the app. While
+    // episodes are selected it clears the selection first.
+    return ListenableBuilder(
+      listenable: EpisodeSelection.instance,
+      builder: (context, _) {
+        final sel = EpisodeSelection.instance;
+        return PopScope(
+          canPop: _previous.isEmpty && !sel.active,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) return;
+            if (sel.active) {
+              sel.clear();
+            } else if (_previous.isNotEmpty) {
+              setState(() => section = _previous.removeLast());
+            }
+          },
+          child: Scaffold(
+            body: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  _ScreenHeader(
+                    title: sel.active
+                        ? '${sel.ids.length} selected'
+                        : _titles[section]!,
+                    actions: sel.active
+                        ? [
+                            IconButton(
+                              tooltip: 'Clear selection',
+                              onPressed: sel.clear,
+                              icon: const Icon(Icons.close),
+                            ),
+                          ]
+                        : [
+                            if (lib.signedIn)
+                              IconButton(
+                                tooltip: 'Sync',
+                                onPressed: lib.syncing
+                                    ? null
+                                    : () async {
+                                        await lib.sync();
+                                        await lib.refreshAll();
+                                      },
+                                icon: const Icon(Icons.sync),
+                              ),
+                            _overflowMenu(context, lib, tabs),
+                          ],
+                  ),
+                  if (onTop) nav,
+                  Expanded(child: body),
                 ],
               ),
-              if (eink) _EinkTabs(section: section, onSelect: _select),
-              Expanded(child: body),
-            ],
+            ),
+            // One look for both kinds of screen: the same headers, rows, mini player and player.
+            bottomNavigationBar: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SelectionBar(),
+                const MiniPlayer(),
+                if (!onTop) nav,
+              ],
+            ),
           ),
-        ),
-        // One look for both kinds of screen: the same headers, rows, mini player and player.
-        // Colour phones navigate with AntennaPod's bottom bar, e-ink with the tabs above.
-        bottomNavigationBar: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [const MiniPlayer(), if (!eink) _bottomNav(context, lib)],
-        ),
-      ),
+        );
+      },
     );
   }
 
-  static const _navMain = [
-    _Section.queue,
-    _Section.episodes,
-    _Section.podcasts,
-    _Section.add,
-  ];
-  static const _navMore = [
-    _Section.downloads,
-    _Section.stats,
-    _Section.settings,
-  ];
+  static const _extra = [_Section.downloads, _Section.stats, _Section.settings];
 
-  Widget _bottomNav(BuildContext context, Library lib) {
-    final inMore = _navMore.contains(section);
-    final index = inMore ? _navMain.length : _navMain.indexOf(section);
+  /// The three dots in the corner: tabs that are switched off, then Downloads, Statistics and
+  /// Settings.
+  Widget _overflowMenu(BuildContext context, Library lib, List<_Section> tabs) {
+    final dm = context.read<DownloadManager>();
+    final items = <_Section>[
+      for (final s in const [
+        _Section.queue,
+        _Section.episodes,
+        _Section.podcasts,
+        _Section.add,
+      ])
+        if (!tabs.contains(s)) s,
+      for (final s in _extra)
+        if (!_hidden(lib, s)) s,
+    ];
+    return PopupMenuButton<_Section>(
+      tooltip: 'Menu',
+      icon: const Icon(Icons.more_vert),
+      onSelected: _select,
+      itemBuilder: (c) => [
+        for (final s in items)
+          PopupMenuItem(
+            value: s,
+            child: Row(
+              children: [
+                Icon(_icons[s], size: 22),
+                const SizedBox(width: 14),
+                Expanded(child: Text(_titles[s]!)),
+                if (s == _Section.downloads && dm.doneCount > 0)
+                  Text('${dm.doneCount}'),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _bottomNav(BuildContext context, Library lib, List<_Section> tabs) {
+    final i = tabs.indexOf(section);
     return NavigationBar(
       height: 68,
-      selectedIndex: index,
+      selectedIndex: i < 0 ? 0 : i,
+      // A section that lives in the three-dot menu leaves every tab unselected.
+      indicatorColor: i < 0 ? Colors.transparent : null,
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      onDestinationSelected: (i) {
-        if (i < _navMain.length) {
-          _select(_navMain[i]);
-        } else {
-          _showMore(context, lib);
-        }
-      },
+      onDestinationSelected: (i) => _select(tabs[i]),
       destinations: [
-        for (final s in _navMain)
+        for (final s in tabs)
           NavigationDestination(
             icon: _navIcon(lib, s),
             selectedIcon: _navIcon(lib, s),
@@ -183,10 +244,6 @@ class _MobileShellState extends State<MobileShell> {
                 ? 'Podcasts'
                 : _titles[s]!.split(' ').first,
           ),
-        const NavigationDestination(
-          icon: Icon(Icons.more_horiz),
-          label: 'More',
-        ),
       ],
     );
   }
@@ -199,35 +256,6 @@ class _MobileShellState extends State<MobileShell> {
     };
     final icon = Icon(_icons[s]);
     return n == 0 ? icon : Badge(label: Text('$n'), child: icon);
-  }
-
-  void _showMore(BuildContext context, Library lib) {
-    final dm = context.read<DownloadManager>();
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (c) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final s in _navMore)
-              if (!_hidden(lib, s))
-                ListTile(
-                  leading: Icon(_icons[s]),
-                  title: Text(_titles[s]!),
-                  trailing: s == _Section.downloads && dm.doneCount > 0
-                      ? Text('${dm.doneCount}')
-                      : null,
-                  selected: s == section,
-                  onTap: () {
-                    Navigator.pop(c);
-                    _select(s);
-                  },
-                ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -257,44 +285,39 @@ class _ScreenHeader extends StatelessWidget {
 }
 
 class _EinkTabs extends StatelessWidget {
-  const _EinkTabs({required this.section, required this.onSelect});
+  const _EinkTabs({
+    required this.section,
+    required this.tabs,
+    required this.onSelect,
+    required this.atBottom,
+  });
   final _Section section;
+  final List<_Section> tabs;
   final ValueChanged<_Section> onSelect;
-
-  static const _main = [
-    _Section.queue,
-    _Section.episodes,
-    _Section.podcasts,
-    _Section.add,
-  ];
-  static const _more = [_Section.downloads, _Section.stats, _Section.settings];
+  final bool atBottom; // the row sits under the screen: the tabs open upward
 
   @override
   Widget build(BuildContext context) {
-    // Browser-style tabs: the selected one is outlined with rounded top corners and open at the
-    // bottom, so it joins the line that runs under the whole row.
-    final lib = context.read<Library>();
-    final inMore = _more.contains(section);
-
-    Widget tab(
-      String label,
-      bool selected, {
-      required VoidCallback onTap,
-      String? tooltip,
-    }) {
+    // Browser-style tabs: the selected one is outlined with rounded corners and open on the side
+    // that faces the list, so it joins the line that runs along the whole row.
+    final side = BorderSide(width: 2);
+    Widget tab(String label, bool selected, VoidCallback onTap) {
       final box = Container(
         height: 50,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? Colors.white : null,
           border: selected
-              ? const Border(
-                  top: BorderSide(width: 2),
-                  left: BorderSide(width: 2),
-                  right: BorderSide(width: 2),
+              ? Border(
+                  top: side,
+                  bottom: atBottom ? side : BorderSide.none,
+                  left: side,
+                  right: side,
                 )
               : null,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+          borderRadius: atBottom
+              ? const BorderRadius.vertical(bottom: Radius.circular(14))
+              : const BorderRadius.vertical(top: Radius.circular(14)),
         ),
         child: Text(
           label,
@@ -311,89 +334,35 @@ class _EinkTabs extends StatelessWidget {
         child: Listener(
           onPointerDown: (_) => onTap(),
           behavior: HitTestBehavior.opaque,
-          child: tooltip == null ? box : Tooltip(message: tooltip, child: box),
+          child: box,
         ),
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+      padding: EdgeInsets.fromLTRB(6, atBottom ? 0 : 6, 6, atBottom ? 6 : 0),
       child: Stack(
         children: [
-          const Positioned(
+          Positioned(
             left: 0,
             right: 0,
-            bottom: 0,
-            child: SizedBox(height: 2, child: ColoredBox(color: Colors.black)),
+            top: atBottom ? 0 : null,
+            bottom: atBottom ? null : 0,
+            child: const SizedBox(
+              height: 2,
+              child: ColoredBox(color: Colors.black),
+            ),
           ),
           Row(
             children: [
-              for (final s in _main)
+              for (final s in tabs)
                 tab(
                   s == _Section.podcasts
                       ? 'Podcasts'
                       : (s == _Section.add ? 'Add' : _titles[s]!),
                   s == section,
-                  onTap: () => onSelect(s),
+                  () => onSelect(s),
                 ),
-              // Downloads, Statistics and Settings live under one tab so the row stays readable.
-              Expanded(
-                child: Builder(
-                  builder: (ctx) => Listener(
-                    behavior: HitTestBehavior.opaque,
-                    onPointerDown: (_) async {
-                      final box = ctx.findRenderObject() as RenderBox;
-                      final origin = box.localToGlobal(Offset.zero);
-                      final picked = await showMenu<_Section>(
-                        context: ctx,
-                        position: RelativeRect.fromLTRB(
-                          origin.dx,
-                          origin.dy + box.size.height,
-                          origin.dx + box.size.width,
-                          0,
-                        ),
-                        items: [
-                          for (final s in _more)
-                            if (!_hidden(lib, s))
-                              PopupMenuItem(value: s, child: Text(_titles[s]!)),
-                        ],
-                      );
-                      if (picked != null) onSelect(picked);
-                    },
-                    child: Tooltip(
-                      message: 'More sections',
-                      child: Container(
-                        height: 50,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: inMore ? Colors.white : null,
-                          border: inMore
-                              ? const Border(
-                                  top: BorderSide(width: 2),
-                                  left: BorderSide(width: 2),
-                                  right: BorderSide(width: 2),
-                                )
-                              : null,
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(14),
-                          ),
-                        ),
-                        child: Text(
-                          inMore ? _titles[section]! : 'More',
-                          maxLines: 1,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: inMore
-                                ? FontWeight.w900
-                                : FontWeight.bold,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
         ],
@@ -896,7 +865,15 @@ class EpisodeTile extends StatelessWidget {
   final Episode e;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: EpisodeSelection.instance,
+    builder: (context, _) => _build(context),
+  );
+
+  Widget _build(BuildContext context) {
+    final selection = EpisodeSelection.instance;
+    final picking = selection.active;
+    final picked = selection.has(e.id);
     final lib = context.watch<Library>();
     final player = context.read<PlayerController>();
     final dm = context.watch<DownloadManager>();
@@ -947,15 +924,30 @@ class EpisodeTile extends StatelessWidget {
               : Text(dur > 0 ? fmtDurationMs(dur) : '', style: smallStyle));
 
     return InkWell(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => EpisodeScreen(e.id)),
-      ),
-      onLongPress: () => _menu(context, lib),
-      child: Padding(
+      onTap: picking
+          ? () => selection.toggle(e.id)
+          : () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => EpisodeScreen(e.id)),
+            ),
+      onLongPress: picking
+          ? () => selection.toggle(e.id)
+          : () => _menu(context, lib),
+      child: Container(
+        color: picked && !eink
+            ? cs.primaryContainer.withValues(alpha: 0.55)
+            : (picked ? const Color(0xFFE0E0E0) : null),
         padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
         child: Row(
           children: [
+            if (picking)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Icon(
+                  picked ? Icons.check_circle : Icons.radio_button_unchecked,
+                  size: 26,
+                ),
+              ),
             Art(e.imageUrl, size: 64, gray: eink),
             const SizedBox(width: 12),
             Expanded(
@@ -991,7 +983,7 @@ class EpisodeTile extends StatelessWidget {
             const SizedBox(width: 6),
             // The download icon can be switched off in Settings > Interface; e-ink spells it out
             // in the "Downloaded" note instead.
-            if (!eink && lib.settings.uiRowDownloadIcon)
+            if (!eink && !picking && lib.settings.uiRowDownloadIcon)
               DownloadIcon(e, size: 22),
             const SizedBox(width: 4),
             PlayCircle(
@@ -1001,7 +993,7 @@ class EpisodeTile extends StatelessWidget {
               onTap: () => isCurrent ? player.toggle() : player.play(e),
             ),
             // E-ink has no comfortable long-press, so its menu button is always visible.
-            if (eink)
+            if (eink && !picking)
               IconButton(
                 tooltip: 'More',
                 icon: const Icon(Icons.more_vert),
@@ -1013,6 +1005,8 @@ class EpisodeTile extends StatelessWidget {
     );
   }
 
+  /// The long-press menu: one list, in groups (playing, downloading, marking, other), with the
+  /// same look on every screen kind. On e-ink the rows are taller and ruled.
   void _menu(BuildContext context, Library lib) {
     final inQueue = lib.queue.contains(e.id);
     final played = lib.progressOf(e.id).played;
@@ -1020,143 +1014,159 @@ class EpisodeTile extends StatelessWidget {
     final dm = context.read<DownloadManager>();
     final eink = lib.einkMode;
 
-    final entries = <(IconData, String, VoidCallback)>[
-      (Icons.playlist_play, 'Play next', () => lib.enqueue(e.id, next: true)),
-      (
-        inQueue ? Icons.remove_from_queue : Icons.add_to_queue,
-        inQueue ? 'Remove from queue' : 'Add to queue',
-        () {
-          if (inQueue) {
-            lib.removeFromQueue(e.id);
-            showQueueUndo(context, lib, 'Removed from queue');
-          } else {
-            lib.enqueue(e.id);
-          }
-        },
-      ),
-      (
-        dm.isDownloaded(e.id)
-            ? Icons.delete_outline
-            : (dm.isBusy(e.id) ? Icons.cancel_outlined : Icons.download),
-        dm.isDownloaded(e.id)
-            ? 'Remove download'
-            : (dm.isBusy(e.id) ? 'Cancel download' : 'Download'),
-        () => dm.isDownloaded(e.id)
-            ? dm.delete(e.id)
-            : (dm.isBusy(e.id) ? dm.cancel(e.id) : dm.download(e)),
-      ),
-      if (inQueue) ...[
+    final groups = <List<(IconData, String, VoidCallback)>>[
+      [
+        (Icons.playlist_play, 'Play next', () => lib.enqueue(e.id, next: true)),
         (
-          Icons.vertical_align_top,
-          'Move to top',
-          () => lib.moveInQueue([e.id], toTop: true),
+          inQueue ? Icons.remove_from_queue : Icons.add_to_queue,
+          inQueue ? 'Remove from queue' : 'Add to queue',
+          () {
+            if (inQueue) {
+              lib.removeFromQueue(e.id);
+              showQueueUndo(context, lib, 'Removed from queue');
+            } else {
+              lib.enqueue(e.id);
+            }
+          },
         ),
-        if (queueIndex > 0)
-          (Icons.arrow_upward, 'Move up', () => lib.nudgeInQueue([e.id], -1)),
-        if (queueIndex < lib.queue.length - 1)
+        if (inQueue) ...[
           (
-            Icons.arrow_downward,
-            'Move down',
-            () => lib.nudgeInQueue([e.id], 1),
+            Icons.vertical_align_top,
+            'Move to top',
+            () => lib.moveInQueue([e.id], toTop: true),
           ),
+          if (queueIndex > 0)
+            (Icons.arrow_upward, 'Move up', () => lib.nudgeInQueue([e.id], -1)),
+          if (queueIndex < lib.queue.length - 1)
+            (
+              Icons.arrow_downward,
+              'Move down',
+              () => lib.nudgeInQueue([e.id], 1),
+            ),
+          (
+            Icons.vertical_align_bottom,
+            'Move to bottom',
+            () => lib.moveInQueue([e.id], toTop: false),
+          ),
+        ],
+      ],
+      [
         (
-          Icons.vertical_align_bottom,
-          'Move to bottom',
-          () => lib.moveInQueue([e.id], toTop: false),
+          dm.isDownloaded(e.id)
+              ? Icons.delete_outline
+              : (dm.isBusy(e.id) ? Icons.cancel_outlined : Icons.download),
+          dm.isDownloaded(e.id)
+              ? 'Remove download'
+              : (dm.isBusy(e.id) ? 'Cancel download' : 'Download'),
+          () => dm.isDownloaded(e.id)
+              ? dm.delete(e.id)
+              : (dm.isBusy(e.id) ? dm.cancel(e.id) : dm.download(e)),
         ),
       ],
-      (
-        lib.isFavorite(e.id) ? Icons.star : Icons.star_border,
-        lib.isFavorite(e.id) ? 'Remove from favorites' : 'Add to favorites',
-        () => lib.setFavorite(e.id, !lib.isFavorite(e.id)),
-      ),
-      (
-        played ? Icons.visibility_off : Icons.check,
-        played ? 'Mark as unplayed' : 'Mark as played',
-        () => lib.markPlayed(e.id, !played),
-      ),
-      (
-        Icons.link,
-        'Copy episode link',
-        () async {
-          await Clipboard.setData(
-            ClipboardData(text: e.link.isNotEmpty ? e.link : e.audioUrl),
-          );
-          if (context.mounted) showSnack(context, 'Link copied');
-        },
-      ),
+      [
+        (
+          lib.isFavorite(e.id) ? Icons.star : Icons.star_border,
+          lib.isFavorite(e.id) ? 'Remove from favorites' : 'Add to favorites',
+          () => lib.setFavorite(e.id, !lib.isFavorite(e.id)),
+        ),
+        (
+          played ? Icons.visibility_off : Icons.check,
+          played ? 'Mark as unplayed' : 'Mark as played',
+          () => lib.markPlayed(e.id, !played),
+        ),
+      ],
+      [
+        (
+          Icons.checklist,
+          'Select several',
+          () => EpisodeSelection.instance.add(e.id),
+        ),
+        (
+          Icons.link,
+          'Copy episode link',
+          () async {
+            await Clipboard.setData(
+              ClipboardData(text: e.link.isNotEmpty ? e.link : e.audioUrl),
+            );
+            if (context.mounted) showSnack(context, 'Link copied');
+          },
+        ),
+      ],
     ];
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (c) {
-        Widget rating() => Row(
-          children: [
-            const SizedBox(width: 16),
-            const Text('Rating'),
-            const Spacer(),
-            StarRating(
-              value: lib.ratingOf(e.id),
-              size: 28,
-              onChanged: (v) {
-                Navigator.pop(c);
-                lib.setRatings([e.id], v);
-              },
+        final rowHeight = eink ? 48.0 : 46.0;
+        final children = <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: Text(
+              e.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(width: 16),
-          ],
-        );
-        return SafeArea(
-          child: eink
-              // No scrolling on e-ink: the actions become a wrapped grid of buttons that fits the screen.
-              ? Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+          ),
+          for (var g = 0; g < groups.length; g++) ...[
+            const Divider(height: 1),
+            for (final (icon, label, run) in groups[g])
+              InkWell(
+                onTap: () {
+                  Navigator.pop(c);
+                  run();
+                },
+                child: SizedBox(
+                  height: rowHeight,
+                  child: Row(
                     children: [
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final (icon, label, run) in entries)
-                            OutlinedButton.icon(
-                              icon: Icon(icon, size: 18),
-                              label: Text(label),
-                              onPressed: () {
-                                Navigator.pop(c);
-                                run();
-                              },
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      rating(),
-                    ],
-                  ),
-                )
-              : SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final (icon, label, run) in entries)
-                        ListTile(
-                          dense: true,
-                          leading: Icon(icon),
-                          title: Text(label),
-                          onTap: () {
-                            Navigator.pop(c);
-                            run();
-                          },
+                      const SizedBox(width: 20),
+                      Icon(icon, size: 22),
+                      const SizedBox(width: 18),
+                      Expanded(
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: eink ? FontWeight.w600 : null,
+                          ),
                         ),
-                      ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.grade_outlined),
-                        title: rating(),
                       ),
                     ],
                   ),
                 ),
+              ),
+          ],
+          const Divider(height: 1),
+          SizedBox(
+            height: rowHeight,
+            child: Row(
+              children: [
+                const SizedBox(width: 20),
+                const Icon(Icons.grade_outlined, size: 22),
+                const SizedBox(width: 18),
+                const Text('Rating', style: TextStyle(fontSize: 16)),
+                const Spacer(),
+                StarRating(
+                  value: lib.ratingOf(e.id),
+                  size: 26,
+                  onChanged: (v) {
+                    Navigator.pop(c);
+                    lib.setRatings([e.id], v);
+                  },
+                ),
+                const SizedBox(width: 16),
+              ],
+            ),
+          ),
+        ];
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: children),
+          ),
         );
       },
     );
@@ -1655,7 +1665,10 @@ class _PodcastScreenState extends State<PodcastScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: const MiniPlayer(),
+      bottomNavigationBar: const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [SelectionBar(), MiniPlayer()],
+      ),
     );
   }
 }
@@ -1682,16 +1695,68 @@ class MiniPlayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final player = context.watch<PlayerController>();
-    final lib = context.read<Library>();
-    // Listen for the setting too, so switching the mini player off in Settings takes effect at once.
-    final visible = context.select<Library, bool>(
-      (l) => l.settings.uiMiniPlayer,
-    );
+    // Watching the library too: switching the bar off, or changing its size or buttons, in
+    // Settings takes effect at once.
+    final lib = context.watch<Library>();
+    final visible = lib.settings.uiMiniPlayer;
     final e = player.current;
     if (e == null || !visible) return const SizedBox.shrink();
     final eink = lib.einkMode;
     final total = player.duration.inMilliseconds;
     final cs = Theme.of(context).colorScheme;
+    // The bar's height, and with it the cover, text and buttons, follows Settings > Interface.
+    // Small and medium keep everything on one line; large and extra large put the buttons on a
+    // second, bigger line so they stay easy to hit and the title keeps its room.
+    final size = lib.settings.playerBarSize;
+    final twoRows = size == 'large' || size == 'huge';
+    final h = switch (size) {
+      'small' => 52.0,
+      'large' => 64.0,
+      'huge' => 76.0,
+      _ => 62.0,
+    };
+    final k = switch (size) {
+      'small' => 52 / 62,
+      'large' => 1.25,
+      'huge' => 1.6,
+      _ => 1.0,
+    };
+    Widget barButton(String key) {
+      switch (key) {
+        case 'rewind':
+          return _BarSkip(
+            icon: Icons.fast_rewind,
+            label: '${lib.skipBackSec}',
+            tooltip: 'Back ${lib.skipBackSec}s',
+            onTap: player.skipBack,
+            k: k,
+          );
+        case 'forward':
+          return _BarSkip(
+            icon: Icons.fast_forward,
+            label: '${lib.skipForwardSec}',
+            tooltip: 'Forward ${lib.skipForwardSec}s',
+            onTap: player.skipForward,
+            k: k,
+          );
+        case 'next':
+          return _BarSkip(
+            icon: Icons.skip_next,
+            label: '',
+            tooltip: 'Next in queue',
+            onTap: player.next,
+            k: k,
+          );
+        default:
+          return IconButton(
+            iconSize: 36 * k,
+            tooltip: player.playing ? 'Pause' : 'Play',
+            icon: Icon(player.playing ? Icons.pause : Icons.play_arrow),
+            onPressed: player.toggle,
+          );
+      }
+    }
+
     return Material(
       elevation: eink ? 0 : 6,
       color: eink ? Colors.white : cs.surfaceContainerHigh,
@@ -1714,49 +1779,61 @@ class MiniPlayer extends StatelessWidget {
                 context,
                 MaterialPageRoute(builder: (_) => const PlayerScreen()),
               ),
-              child: SizedBox(
-                height: 62,
-                child: Row(
-                  children: [
-                    Art(e.imageUrl, size: 62, radius: 0, gray: eink),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            e.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                            ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: h,
+                    child: Row(
+                      children: [
+                        Art(e.imageUrl, size: h, radius: 0, gray: eink),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                e.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize:
+                                      15 * (k > 1 ? 1 + (k - 1) * 0.5 : 1),
+                                ),
+                              ),
+                              Text(
+                                lib.podcastTitle(e.feedUrl),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize:
+                                      13 * (k > 1 ? 1 + (k - 1) * 0.5 : 1),
+                                  color: eink
+                                      ? Colors.black
+                                      : cs.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
                           ),
-                          Text(
-                            lib.podcastTitle(e.feedUrl),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: eink ? Colors.black : cs.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                        if (!twoRows)
+                          for (final key in lib.settings.playerBarButtons)
+                            barButton(key),
+                        const SizedBox(width: 4),
+                      ],
                     ),
-                    IconButton(
-                      iconSize: 36,
-                      tooltip: player.playing ? 'Pause' : 'Play',
-                      icon: Icon(
-                        player.playing ? Icons.pause : Icons.play_arrow,
-                      ),
-                      onPressed: player.toggle,
+                  ),
+                  if (twoRows)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        for (final key in lib.settings.playerBarButtons)
+                          barButton(key),
+                      ],
                     ),
-                    const SizedBox(width: 4),
-                  ],
-                ),
+                ],
               ),
             ),
           ],
@@ -1764,6 +1841,45 @@ class MiniPlayer extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A skip or next button on the bottom bar: the icon with its length (when it has one) under it.
+class _BarSkip extends StatelessWidget {
+  const _BarSkip({
+    required this.icon,
+    required this.label,
+    required this.tooltip,
+    required this.onTap,
+    required this.k,
+  });
+  final IconData icon;
+  final String label, tooltip;
+  final VoidCallback onTap;
+  final double k;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: InkResponse(
+      onTap: onTap,
+      radius: 30 * k,
+      child: SizedBox(
+        width: 46 * k,
+        height: 62 * k,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 30 * k),
+            if (label.isNotEmpty)
+              Text(
+                label,
+                style: TextStyle(fontSize: 11 * k, fontWeight: FontWeight.w700),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class PlayerScreen extends StatelessWidget {
@@ -1833,44 +1949,54 @@ class PlayerScreen extends StatelessWidget {
       ),
     );
 
-    final controls = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          if (lib.settings.uiPlayerSpeed)
-            control(
-              Icons.speed,
-              speed.toStringAsFixed(2),
-              'Playback speed',
-              () {
-                const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
-                final i = speeds.indexWhere((x) => (x - speed).abs() < 0.01);
-                player.setSpeed(speeds[(i + 1) % speeds.length]);
-              },
-            )
-          else
-            const SizedBox(width: 58),
-          control(
+    Widget playerButton(String key) {
+      switch (key) {
+        case 'speed':
+          return control(
+            Icons.speed,
+            speed.toStringAsFixed(2),
+            'Playback speed',
+            () {
+              const speeds = [0.8, 1.0, 1.2, 1.5, 1.8, 2.0];
+              final i = speeds.indexWhere((x) => (x - speed).abs() < 0.01);
+              player.setSpeed(speeds[(i + 1) % speeds.length]);
+            },
+          );
+        case 'rewind':
+          return control(
             Icons.fast_rewind,
             '${lib.skipBackSec}',
             'Back ${lib.skipBackSec}s',
             player.skipBack,
-          ),
-          PlayCircle(
+          );
+        case 'forward':
+          return control(
+            Icons.fast_forward,
+            '${lib.skipForwardSec}',
+            'Forward ${lib.skipForwardSec}s',
+            player.skipForward,
+          );
+        case 'next':
+          return control(Icons.skip_next, '', 'Next in queue', player.next);
+        default:
+          return PlayCircle(
             playing: player.playing,
             size: 76,
             eink: eink,
             filled: true,
             onTap: player.toggle,
-          ),
-          control(
-            Icons.fast_forward,
-            '${lib.skipForwardSec}',
-            'Forward ${lib.skipForwardSec}s',
-            player.skipForward,
-          ),
-          control(Icons.skip_next, '', 'Next in queue', player.next),
+          );
+      }
+    }
+
+    // The speed button honours the older "show speed" switch too.
+    final controls = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          for (final key in lib.settings.playerButtons)
+            if (key != 'speed' || lib.settings.uiPlayerSpeed) playerButton(key),
         ],
       ),
     );
@@ -1890,6 +2016,7 @@ class PlayerScreen extends StatelessWidget {
                     onPressed: () => Navigator.maybePop(context),
                   ),
                   const Spacer(),
+                  const CastButton(),
                   IconButton(
                     tooltip: lib.isFavorite(e.id)
                         ? 'Remove from favorites'
@@ -1983,6 +2110,7 @@ class PlayerScreen extends StatelessWidget {
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
+                  const CastStrip(),
                   if (player.error != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
@@ -2059,7 +2187,7 @@ class PlayerScreen extends StatelessWidget {
                   ],
                 ),
               ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8.0 + lib.settings.playerLift),
           ],
         ),
       ),

@@ -304,7 +304,7 @@ void main() {
         ),
         findsOneWidget,
       ); // Up Next count
-      await tester.tap(find.text('More'));
+      await tester.tap(find.byTooltip('Menu'));
       await tester.pumpAndSettle();
       expect(find.text('Downloads'), findsOneWidget);
       expect(find.text('Statistics'), findsOneWidget);
@@ -326,14 +326,14 @@ void main() {
         rig.dm.download(rig.lib.episodes[two]!);
         await downloadAndWait(tester, rig);
 
-        await tester.tap(find.byTooltip('More sections'));
+        await tester.tap(find.byTooltip('Menu'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Downloads').last);
         await tester.pumpAndSettle();
         expect(find.byType(Scrollable), findsNothing);
         expect(find.text('Ep Two'), findsOneWidget);
 
-        await tester.tap(find.byTooltip('More sections'));
+        await tester.tap(find.byTooltip('Menu'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Statistics').last);
         await tester.pumpAndSettle();

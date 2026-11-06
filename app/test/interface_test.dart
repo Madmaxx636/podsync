@@ -295,15 +295,15 @@ void main() {
       await tester.pump();
       expect(find.byTooltip('Download'), findsNothing);
 
-      await tester.tap(find.text('More'));
+      await tester.tap(find.byTooltip('Menu'));
       await tester.pumpAndSettle();
       expect(find.text('Downloads'), findsOneWidget);
-      await tester.tapAt(const Offset(20, 100)); // dismiss the sheet
+      await tester.tapAt(const Offset(20, 100)); // dismiss the menu
       await tester.pumpAndSettle();
       rig.lib.setSetting('uiPhoneDownloads', false);
       rig.lib.setSetting('uiPhoneStats', false);
       await tester.pump();
-      await tester.tap(find.text('More'));
+      await tester.tap(find.byTooltip('Menu'));
       await tester.pumpAndSettle();
       expect(find.text('Downloads'), findsNothing);
       expect(find.text('Statistics'), findsNothing);

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.0 - 2026-11-06
+
+Android.
+
+- Tabs: Settings > Interface > Navigation. Put the tab bar at the top or the bottom, and choose which tabs show and in what order (drag to reorder, untick to remove one, for example Episodes). Tabs you remove move into the three-dot menu in the top corner. That menu replaces the old More tab, on colour and e-ink screens alike, and lists Downloads, Statistics and Settings.
+- Long-press an episode for a list of actions in groups (play and queue, download, favourite and played, other) with Rating at the bottom, instead of a grid of buttons on e-ink. "Select several" starts multi-select.
+- Multi-select: tap more episodes to add them, then use the bar at the bottom: Queue or Unqueue, Download or Remove, Played or Unplayed, Favorite, and More (Play next, move to top or bottom, remove downloads, clear). Back clears the selection.
+- Interface size: Settings > Appearance has an Interface size slider (50% to 250%) that scales everything on the phone, and Text size is now a slider (70% to 200%). Both change by exactly 1% with the - and + buttons.
+- Player bar at the bottom: Settings > Interface > Player bar sets its size (small, medium, large, extra large; the large sizes put the buttons on a second, bigger row) and lets you choose its buttons (skip back, play, skip forward, next) and their order.
+- Player screen: choose which buttons show under the seek bar and their order, and raise them up from the bottom edge (Settings > Interface > Player screen).
+- Cast: the cast icon on the player screen lists Chromecasts, Google TVs and other Cast devices on your Wi-Fi and plays the episode there from where you are. Play, pause, seek and skip then control the TV, the episode moves on through Up Next, and "Play on this device instead" brings it back.
+- Android Auto: PodSync shows up in the car with Up Next, New episodes, Downloaded and Podcasts (each with its episodes) and plays from them.
+- Statistics (Subscriptions, Years and Downloads pages with a gauge and monthly bars) now on the phone too.
+
 ## 0.10.0 - 2026-11-06
 
 - Up Next: the column headings no longer re-sort the queue; the order is only what you set by dragging or with Move to Top / Bottom. Time left now counts down while the episode plays. New Starts at and Ends at columns show the clock time each episode would begin and end, at each podcast's playback speed (Tomorrow or the weekday is added when it is not today). Turn them on or off in the column menu, View > Columns and Settings.

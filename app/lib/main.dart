@@ -9,6 +9,7 @@ import 'core/audio_handler.dart';
 import 'core/desktop_integration.dart';
 import 'core/directory.dart';
 import 'core/downloads.dart';
+import 'core/cast.dart';
 import 'core/library.dart';
 import 'core/player.dart';
 import 'core/single_instance.dart';
@@ -59,6 +60,8 @@ Future<void> main(List<String> args) async {
     );
     // Home-screen widgets.
     await WidgetBridge(library, player).start();
+    // Casting to a TV or speaker.
+    CastController.instance = CastController(player, library);
   }
   // Windows and Linux: tray icon, close to tray, start at login, media keys.
   if (DesktopIntegration.supported) {
@@ -116,7 +119,7 @@ class PodSyncApp extends StatelessWidget {
               .copyWith(textScaler: TextScaler.linear(s.textScale)),
           child: child!,
         );
-        return Platform.isAndroid ? app : ZoomHost(child: app);
+        return ZoomHost(child: app);
       },
       home: UpdateGate(
         child: Platform.isAndroid ? const MobileShell() : const DesktopShell(),

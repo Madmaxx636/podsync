@@ -107,6 +107,14 @@ class AppSettings {
     'confirmClearQueue': false, // Clear has Undo, so asking first is optional
     'colRating': true,
     'colStarts': true,
+    'navPosition': 'bottom', // phone: where the tabs sit, 'bottom' or 'top'
+    'navTabs': 'queue,episodes,podcasts,add', // phone: the tabs shown, in order
+    'playerBarSize': 'medium', // phone: height of the bar at the bottom, small|medium|large|huge
+    'playerBarButtons':
+        'rewind,play,forward,next', // phone: buttons on that bar, in order
+    'playerButtons': 'speed,rewind,play,forward,next', // phone player screen: buttons, in order
+    'playerLift':
+        0, // phone player screen: dp the buttons are raised from the bottom
     'autoScale':
         false, // scale the interface with the window size (this device)
     'colStartsAt': true,
@@ -337,6 +345,38 @@ class AppSettings {
   bool get uiPhoneFilters => _get('uiPhoneFilters');
   bool get uiRowDownloadIcon => _get('uiRowDownloadIcon');
   bool get colStarts => _get('colStarts');
+  String get navPosition => _get('navPosition') == 'top' ? 'top' : 'bottom';
+
+  /// The phone tabs that are switched on, in order; never empty.
+  List<String> get navTabs {
+    const all = ['queue', 'episodes', 'podcasts', 'add'];
+    final out = {
+      for (final k in (_get('navTabs') as String).split(','))
+        if (all.contains(k.trim())) k.trim(),
+    }.toList();
+    return out.isEmpty ? ['queue'] : out;
+  }
+
+  String get playerBarSize => _get('playerBarSize');
+  List<String> get playerBarButtons {
+    const all = ['rewind', 'play', 'forward', 'next'];
+    final out = {
+      for (final k in (_get('playerBarButtons') as String).split(','))
+        if (all.contains(k.trim())) k.trim(),
+    }.toList();
+    return out.contains('play') ? out : ['play', ...out];
+  }
+
+  int get playerLift => _get('playerLift');
+  List<String> get playerButtons {
+    const all = ['speed', 'rewind', 'play', 'forward', 'next'];
+    final out = {
+      for (final k in (_get('playerButtons') as String).split(','))
+        if (all.contains(k.trim())) k.trim(),
+    }.toList();
+    return out.contains('play') ? out : [...out, 'play'];
+  }
+
   bool get autoScale => _get('autoScale');
   bool get colStartsAt => _get('colStartsAt');
   bool get colEndsAt => _get('colEndsAt');

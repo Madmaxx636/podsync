@@ -14,9 +14,9 @@ class Zoom {
   /// Extra factor from "scale with the window": 1.0 at 1280 px wide, set by [ZoomHost].
   static double _auto = 1.0;
 
-  static double of(Library lib) => Platform.isAndroid
-      ? 1.0
-      : lib.settings.zoom * (lib.settings.autoScale ? _auto : 1.0);
+  static double of(Library lib) =>
+      lib.settings.zoom *
+      (!Platform.isAndroid && lib.settings.autoScale ? _auto : 1.0);
 
   static void change(Library lib, double delta) => lib.setSetting(
     'zoom',
@@ -60,7 +60,9 @@ class ZoomHost extends StatelessWidget {
   Widget build(BuildContext context) {
     final lib = context.read<Library>();
     final base = context.select<Library, double>((l) => l.settings.zoom);
-    final auto = context.select<Library, bool>((l) => l.settings.autoScale);
+    final auto =
+        !Platform.isAndroid &&
+        context.select<Library, bool>((l) => l.settings.autoScale);
     return Listener(
       onPointerSignal: (e) {
         if (e is PointerScrollEvent &&
@@ -88,7 +90,17 @@ class ZoomHost extends StatelessWidget {
                       scale: z,
                       alignment: Alignment.topLeft,
                       child: MediaQuery(
-                        data: MediaQuery.of(context).copyWith(size: Size(w, h)),
+                        data: () {
+                          // Insets (status bar, keyboard) are in real pixels: shrink them too.
+                          final mq = MediaQuery.of(context);
+                          return mq.copyWith(
+                            size: Size(w, h),
+                            padding: mq.padding / z,
+                            viewPadding: mq.viewPadding / z,
+                            viewInsets: mq.viewInsets / z,
+                            systemGestureInsets: mq.systemGestureInsets / z,
+                          );
+                        }(),
                         child: child,
                       ),
                     ),

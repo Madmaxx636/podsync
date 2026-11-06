@@ -199,20 +199,21 @@ List<SettingsCategory> settingsCategories(
             },
           ),
         ],
-        if (!android && !lib.einkMode) ...[
+        if (!lib.einkMode) ...[
           ScaleItem(
             'Interface size',
-            'Scales the whole window: text, buttons and spacing. Also Ctrl + mouse wheel, Ctrl + and Ctrl -',
+            android ? 'Scales everything: text, buttons, covers and spacing' : 'Scales the whole window: text, buttons and spacing. Also Ctrl + mouse wheel, Ctrl + and Ctrl -',
             () => (lib.settings.zoom * 100).round(),
             (v) => lib.setSetting('zoom', v / 100),
             min: 50,
             max: 250,
           ),
-          tog(
-            'autoScale',
-            'Scale with the window',
-            'Make everything bigger in a big window and smaller in a small one, on top of the size above',
-          ),
+          if (!android)
+            tog(
+              'autoScale',
+              'Scale with the window',
+              'Make everything bigger in a big window and smaller in a small one, on top of the size above',
+            ),
         ],
         if (lib.einkMode)
           choice<double>(
@@ -284,6 +285,55 @@ List<SettingsCategory> settingsCategories(
               );
             }
           }),
+      ],
+      if (android) ...[
+        const HeaderItem('Navigation'),
+        choice<String>('navPosition', 'Tab bar', 'Where the tabs sit', {
+          'Bottom': 'bottom',
+          'Top': 'top',
+        }),
+        ActionItem(
+          'Tabs',
+          'Choose which tabs show and their order. Others move to the \u22ee menu',
+          (c) => showNavTabsDialog(c, lib),
+        ),
+        const HeaderItem('Player bar'),
+        choice<String>(
+          'playerBarSize',
+          'Bar size',
+          'The bar with the playing episode at the bottom',
+          {
+            'Small': 'small',
+            'Medium (default)': 'medium',
+            'Large': 'large',
+            'Extra large': 'huge',
+          },
+        ),
+        ActionItem(
+          'Bar buttons',
+          'Choose which buttons the bar shows and their order',
+          (c) => showPlayerBarDialog(c, lib),
+        ),
+      ],
+      if (android) ...[
+        const HeaderItem('Player screen'),
+        ActionItem(
+          'Buttons',
+          'Choose which buttons show under the seek bar and their order',
+          (c) => showPlayerButtonsDialog(c, lib),
+        ),
+        choice<int>(
+          'playerLift',
+          'Raise the buttons',
+          'Lift the controls up from the bottom edge of the screen',
+          {
+            'Not raised (default)': 0,
+            'A little': 24,
+            'Some': 48,
+            'A lot': 80,
+            'Most': 120,
+          },
+        ),
       ],
       const HeaderItem('Start-up'),
       choice<String>(
@@ -1816,3 +1866,121 @@ class _ScaleRowState extends State<_ScaleRow> {
     );
   }
 }
+
+const _navNames = {
+  'queue': 'Queue',
+  'episodes': 'Episodes',
+  'podcasts': 'Podcasts',
+  'add': 'Add podcast',
+};
+
+const _barNames = {
+  'rewind': 'Skip back',
+  'play': 'Play / pause',
+  'forward': 'Skip forward',
+  'next': 'Next episode',
+};
+
+/// A list you can drag into order, with a tick on each row for "shown". Saves the shown ones, in
+/// order, to the setting [key] as a comma list.
+Future<void> _showOrderDialog(
+  BuildContext context,
+  Library lib, {
+  required String title,
+  required String key,
+  required Map<String, String> names,
+  required List<String> shown,
+  required Set<String> locked,
+}) async {
+  final order = [
+    ...shown,
+    for (final k in names.keys)
+      if (!shown.contains(k)) k,
+  ];
+  final on = {...shown};
+  await showDialog<void>(
+    context: context,
+    builder: (c) => StatefulBuilder(
+      builder: (c, setState) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 320,
+          height: 60.0 * order.length + 8,
+          child: ReorderableListView(
+            buildDefaultDragHandles: true,
+            onReorderItem: (from, to) => setState(() {
+              final item = order.removeAt(from);
+              order.insert(to > from ? to - 1 : to, item);
+            }),
+            children: [
+              for (final k in order)
+                CheckboxListTile(
+                  key: ValueKey(k),
+                  value: on.contains(k),
+                  title: Text(names[k]!),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  onChanged: locked.contains(k)
+                      ? null
+                      : (v) => setState(() {
+                          v == true ? on.add(k) : on.remove(k);
+                        }),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              lib.setSetting(key, order.where(on.contains).join(','));
+              Navigator.pop(c);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Future<void> showNavTabsDialog(BuildContext context, Library lib) =>
+    _showOrderDialog(
+      context,
+      lib,
+      title: 'Tabs',
+      key: 'navTabs',
+      names: _navNames,
+      shown: lib.settings.navTabs,
+      locked: const {},
+    );
+
+Future<void> showPlayerButtonsDialog(BuildContext context, Library lib) =>
+    _showOrderDialog(
+      context,
+      lib,
+      title: 'Player buttons',
+      key: 'playerButtons',
+      names: const {
+        'speed': 'Speed',
+        'rewind': 'Skip back',
+        'play': 'Play / pause',
+        'forward': 'Skip forward',
+        'next': 'Next episode',
+      },
+      shown: lib.settings.playerButtons,
+      locked: const {'play'},
+    );
+
+Future<void> showPlayerBarDialog(BuildContext context, Library lib) =>
+    _showOrderDialog(
+      context,
+      lib,
+      title: 'Bar buttons',
+      key: 'playerBarButtons',
+      names: _barNames,
+      shown: lib.settings.playerBarButtons,
+      locked: const {'play'},
+    );

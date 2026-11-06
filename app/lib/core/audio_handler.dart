@@ -1,6 +1,7 @@
 import 'package:audio_service/audio_service.dart';
 
 import 'library.dart';
+import 'models.dart';
 import 'player.dart';
 
 /// Android: the notification, lock screen and headset buttons. PodSync plays one episode at a
@@ -130,6 +131,90 @@ class PodSyncAudioHandler extends BaseAudioHandler with SeekHandler {
         speed: speed,
       ),
     );
+  }
+
+  // ---- Android Auto and other browsers of the media session -----------------------------------
+  // A short tree: Up Next, New episodes, Downloaded, and each podcast with its episodes. Folders
+  // are not playable; episodes are, and play through the normal player.
+
+  static const _queueId = 'folder:queue';
+  static const _newId = 'folder:new';
+  static const _downloadedId = 'folder:downloaded';
+  static const _podcastsId = 'folder:podcasts';
+  static const _feedPrefix = 'feed:';
+  static const _limit = 60;
+
+  MediaItem _folder(String id, String title, [String? subtitle]) =>
+      MediaItem(id: id, title: title, artist: subtitle, playable: false);
+
+  MediaItem _episodeItem(Episode e) => MediaItem(
+    id: e.id,
+    title: e.title,
+    album: lib.podcastTitle(e.feedUrl),
+    artist: lib.podcastTitle(e.feedUrl),
+    artUri: e.imageUrl.isEmpty ? null : Uri.tryParse(e.imageUrl),
+    duration: e.durationMs > 0 ? Duration(milliseconds: e.durationMs) : null,
+    playable: true,
+  );
+
+  @override
+  Future<List<MediaItem>> getChildren(
+    String parentMediaId, [
+    Map<String, dynamic>? options,
+  ]) async {
+    switch (parentMediaId) {
+      case AudioService.browsableRootId:
+        return [
+          _folder(_queueId, 'Up Next', '${lib.queue.length} episodes'),
+          _folder(_newId, 'New episodes'),
+          _folder(_downloadedId, 'Downloaded'),
+          _folder(_podcastsId, 'Podcasts'),
+        ];
+      case _queueId:
+        return [
+          for (final e in lib.queueEpisodes.take(_limit)) _episodeItem(e),
+        ];
+      case _newId:
+        final fresh = [
+          for (final e in lib.episodes.values)
+            if (!lib.progressOf(e.id).played) e,
+        ]..sort((a, b) => b.published.compareTo(a.published));
+        return [for (final e in fresh.take(_limit)) _episodeItem(e)];
+      case _downloadedId:
+        final dl = player.downloads;
+        if (dl == null) return const [];
+        return [
+          for (final id in dl.doneIds.take(_limit))
+            if (lib.episodes[id] != null) _episodeItem(lib.episodes[id]!),
+        ];
+      case _podcastsId:
+        return [
+          for (final p in lib.subscriptions)
+            _folder('$_feedPrefix${p.feedUrl}', p.displayTitle),
+        ];
+    }
+    if (parentMediaId.startsWith(_feedPrefix)) {
+      final eps = [
+        ...lib.episodesOf(parentMediaId.substring(_feedPrefix.length)),
+      ]..sort((a, b) => b.published.compareTo(a.published));
+      return [for (final e in eps.take(_limit)) _episodeItem(e)];
+    }
+    return const [];
+  }
+
+  @override
+  Future<MediaItem?> getMediaItem(String mediaId) async {
+    final e = lib.episodes[mediaId];
+    return e == null ? null : _episodeItem(e);
+  }
+
+  @override
+  Future<void> playFromMediaId(
+    String mediaId, [
+    Map<String, dynamic>? extras,
+  ]) async {
+    final e = lib.episodes[mediaId];
+    if (e != null) await player.play(e);
   }
 
   @override

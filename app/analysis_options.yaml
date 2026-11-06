@@ -15,6 +15,7 @@ analyzer:
     - android/**
     - windows/**
     - linux/**
+    - lib/core/cast_net/**  # vendored from the cast package (MIT), see its LICENSE
 
 linter:
   # The lint rules applied to this project can be customized in the

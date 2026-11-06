@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
+import 'cast_output.dart';
 import 'downloads.dart';
 import 'library.dart';
 import 'models.dart';
@@ -56,6 +57,9 @@ class PlayerController extends ChangeNotifier {
   final DownloadManager? downloads;
   final AudioPlayer _player = AudioPlayer();
 
+  /// Set while the episode plays on a TV or speaker (Cast) instead of this device.
+  CastOutput? cast;
+
   Episode? current;
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
@@ -90,6 +94,12 @@ class PlayerController extends ChangeNotifier {
     }
     duration = Duration(milliseconds: e.durationMs);
     notifyListeners();
+    // Casting: the TV starts the new episode; nothing plays on this device.
+    final remote = cast;
+    if (remote != null) {
+      await remote.load(e, position);
+      return;
+    }
     try {
       // Prefer the downloaded copy; if it will not open, fall back to streaming.
       final local = downloads?.pathOf(e.id);
@@ -139,7 +149,40 @@ class PlayerController extends ChangeNotifier {
     if (recent.isNotEmpty) await play(recent.first);
   }
 
+  /// A Cast device takes over: this device's audio stops and the controls go to the device.
+  Future<void> startCast(CastOutput output) async {
+    await _player.pause();
+    cast = output;
+    notifyListeners();
+  }
+
+  /// The Cast device is gone. With [resume], carry on here from where it had got to.
+  Future<void> stopCast({bool resume = true}) async {
+    if (cast == null) return;
+    cast = null;
+    playing = false;
+    if (current != null) {
+      try {
+        await _player.seek(position);
+      } catch (_) {}
+      if (resume) _player.play();
+    }
+    notifyListeners();
+  }
+
+  /// What the Cast device reports: where it is, whether it plays, whether the episode ended.
+  void castUpdate({Duration? pos, bool? isPlaying, bool ended = false}) {
+    if (cast == null) return;
+    if (pos != null) position = pos;
+    if (isPlaying != null) playing = isPlaying;
+    _maybeSave();
+    notifyListeners();
+    if (ended) _onCompleted();
+  }
+
   Future<void> toggle() async {
+    final remote = cast;
+    if (remote != null) return remote.toggle();
     if (_player.playing) return pause();
     // Smart rewind: after a longer pause, step back a little to catch up on context.
     final rewind = library.settings.smartRewindSec;
@@ -208,7 +251,14 @@ class PlayerController extends ChangeNotifier {
   }
 
   Future<void> seek(Duration d) async {
-    await _player.seek(d);
+    final remote = cast;
+    if (remote != null) {
+      await remote.seek(d);
+      position = d;
+      notifyListeners();
+    } else {
+      await _player.seek(d);
+    }
     _lastSave = DateTime.fromMillisecondsSinceEpoch(0);
     _maybeSave();
   }
@@ -307,7 +357,7 @@ class PlayerController extends ChangeNotifier {
 
   void _maybeSave() {
     final cur = current;
-    if (cur == null || !_player.playing) return;
+    if (cur == null || !(cast != null ? playing : _player.playing)) return;
     final now = DateTime.now();
     if (now.difference(_lastSave) < const Duration(seconds: 5)) return;
     _lastSave = now;
