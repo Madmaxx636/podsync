@@ -9,6 +9,7 @@ import 'player.dart';
 class PodSyncAudioHandler extends BaseAudioHandler with SeekHandler {
   PodSyncAudioHandler(this.player, this.lib) {
     player.addListener(_sync);
+    lib.addListener(_sync); // a changed skip length redraws the buttons
     _sync();
   }
 
@@ -20,13 +21,33 @@ class PodSyncAudioHandler extends BaseAudioHandler with SeekHandler {
   Duration _lastPosition = Duration.zero;
   DateTime _lastPush = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// The skip lengths that have a drawable with the seconds drawn in it (settings offers these).
+  static const _backIcons = {5, 10, 15, 20, 30, 45, 60};
+  static const _forwardIcons = {10, 15, 30, 45, 60, 90};
+
   /// The Android notification lists these in order; the first three show when it is collapsed.
-  List<MediaControl> get _controls => [
-    MediaControl.rewind,
-    if (player.playing) MediaControl.pause else MediaControl.play,
-    MediaControl.fastForward,
-    MediaControl.skipToNext,
-  ];
+  /// The skip buttons carry your own skip lengths, in the label and drawn on the icon.
+  List<MediaControl> get _controls {
+    final back = lib.skipBackSec, fwd = lib.skipForwardSec;
+    return [
+      MediaControl(
+        androidIcon: _backIcons.contains(back)
+            ? 'drawable/ic_skip_back_$back'
+            : 'drawable/audio_service_fast_rewind',
+        label: 'Back $back s',
+        action: MediaAction.rewind,
+      ),
+      if (player.playing) MediaControl.pause else MediaControl.play,
+      MediaControl(
+        androidIcon: _forwardIcons.contains(fwd)
+            ? 'drawable/ic_skip_fwd_$fwd'
+            : 'drawable/audio_service_fast_forward',
+        label: 'Forward $fwd s',
+        action: MediaAction.fastForward,
+      ),
+      MediaControl.skipToNext,
+    ];
+  }
 
   void _sync() {
     final e = player.current;
@@ -63,7 +84,8 @@ class PodSyncAudioHandler extends BaseAudioHandler with SeekHandler {
     // Android works out the moving position itself, so only push when something changed or the
     // position jumped (a seek); not on every tick.
     final key =
-        '${e.id}|${player.playing}|${player.buffering}|$speed|${player.duration.inSeconds}';
+        '${e.id}|${player.playing}|${player.buffering}|$speed|${player.duration.inSeconds}'
+        '|${lib.skipBackSec}|${lib.skipForwardSec}';
     final expected =
         _lastPosition +
         (player.playing
@@ -92,8 +114,8 @@ class PodSyncAudioHandler extends BaseAudioHandler with SeekHandler {
         controls: _controls,
         systemActions: const {
           MediaAction.seek,
-          MediaAction.seekForward,
-          MediaAction.seekBackward,
+          MediaAction.rewind,
+          MediaAction.fastForward,
           MediaAction.skipToNext,
         },
         androidCompactActionIndices: const [0, 1, 2],

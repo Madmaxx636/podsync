@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 - 2026-11-06
+
+- Android notification: the back and forward buttons now use your own skip lengths from Settings (5 to 90 seconds), with the number drawn on the button and in its label, and they update when you change the setting. The notification keeps the cover, episode title and podcast name, play/pause and next, and its seek bar.
+
 ## 0.9.0 - 2026-11-05
 
 - Customize Toolbar: right-click the top bar (or View > Customize Toolbar…) to edit it. Drag the parts into any order (anything left of the display sits on its left, anything right of it on its right), tick them on or off, and size them with sliders: bar height, button size, display width, search width and volume width. Reset puts it all back; Done closes the editor. Choices are kept per device.
