@@ -90,6 +90,8 @@ class WidgetBridge {
       'title': e?.title ?? '',
       'podcast': e == null ? '' : lib.podcastTitle(e.feedUrl),
       'art': art,
+      'skipBack': lib.skipBackSec,
+      'skipForward': lib.skipForwardSec,
       'positionMs': player.position.inMilliseconds,
       'durationMs': player.duration.inMilliseconds > 0
           ? player.duration.inMilliseconds
@@ -109,7 +111,7 @@ class WidgetBridge {
     // to a few percent so a playing episode does not update them constantly).
     final shown = {
       ...payload,
-      'positionMs': ((payload['positionMs'] as int) ~/ 30000),
+      'positionMs': ((payload['positionMs'] as int) ~/ 15000),
     };
     final key = jsonEncode(shown);
     if (key == _lastSent) return;

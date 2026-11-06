@@ -6,16 +6,15 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg"
     android:orientation="horizontal"
-    android:padding="10dp"
+    android:padding="8dp"
     android:gravity="center_vertical">
 
-    <ImageButton
-        android:id="@+id/play_pause"
+    <ImageView
+        android:id="@+id/art"
         android:layout_width="52dp"
         android:layout_height="52dp"
-        android:background="@drawable/widget_play_bg"
-        android:contentDescription="Play or pause"
-        android:src="@drawable/ic_widget_play" />
+        android:scaleType="centerCrop"
+        android:src="@drawable/ic_widget_logo" />
 
     <LinearLayout
         android:id="@+id/open"
@@ -46,4 +45,28 @@
             android:textColor="@color/widget_muted"
             android:textSize="12sp" />
     </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/rewind"
+        android:layout_width="40dp"
+        android:layout_height="48dp"
+        android:background="@null"
+        android:contentDescription="Skip back"
+        android:src="@drawable/ic_widget_back_10" />
+
+    <ImageButton
+        android:id="@+id/play_pause"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="@drawable/widget_play_bg"
+        android:contentDescription="Play or pause"
+        android:src="@drawable/ic_widget_play" />
+
+    <ImageButton
+        android:id="@+id/forward"
+        android:layout_width="40dp"
+        android:layout_height="48dp"
+        android:background="@null"
+        android:contentDescription="Skip forward"
+        android:src="@drawable/ic_widget_fwd_30" />
 </LinearLayout>

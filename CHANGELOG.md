@@ -3,6 +3,7 @@
 ## 0.9.1 - 2026-11-06
 
 - Android notification: the back and forward buttons now use your own skip lengths from Settings (5 to 90 seconds), with the number drawn on the button and in its label, and they update when you change the setting. The notification keeps the cover, episode title and podcast name, play/pause and next, and its seek bar.
+- Android widgets: the back and forward buttons on the Now Playing widget show your skip lengths, and it now shows time played and time left. The small play/pause widget is now a control strip with the cover, episode and podcast, back, play/pause and forward.
 
 ## 0.9.0 - 2026-11-05
 

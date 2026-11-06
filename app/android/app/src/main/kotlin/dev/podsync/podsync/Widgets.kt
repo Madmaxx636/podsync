@@ -95,6 +95,29 @@ private fun cover(path: String?, px: Int): Bitmap? {
     } catch (e: Exception) { null }
 }
 
+private val backChoices = setOf(5, 10, 15, 20, 30, 45, 60)
+private val forwardChoices = setOf(10, 15, 30, 45, 60, 90)
+
+/** The skip buttons show the lengths set in PodSync (drawn on the icon when one exists for it). */
+private fun skipIcons(v: RemoteViews, s: android.content.SharedPreferences) {
+    val back = s.getLong("skipBack", 10).toInt()
+    val fwd = s.getLong("skipForward", 30).toInt()
+    val ids = R.drawable::class.java
+    fun res(name: String, fallback: Int) = try { ids.getField(name).getInt(null) } catch (e: Exception) { fallback }
+    v.setImageViewResource(R.id.rewind, if (back in backChoices) res("ic_widget_back_$back", R.drawable.ic_widget_rewind) else R.drawable.ic_widget_rewind)
+    v.setImageViewResource(R.id.forward, if (fwd in forwardChoices) res("ic_widget_fwd_$fwd", R.drawable.ic_widget_forward) else R.drawable.ic_widget_forward)
+    v.setContentDescription(R.id.rewind, "Back $back seconds")
+    v.setContentDescription(R.id.forward, "Forward $fwd seconds")
+}
+
+private fun clock(ms: Long): String {
+    val t = (ms / 1000).coerceAtLeast(0)
+    val h = t / 3600
+    val m = (t % 3600) / 60
+    val sec = t % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
+}
+
 private fun playIcon(playing: Boolean) = if (playing) R.drawable.ic_widget_pause else R.drawable.ic_widget_play
 
 class NowPlayingWidget : AppWidgetProvider() {
@@ -108,6 +131,10 @@ class NowPlayingWidget : AppWidgetProvider() {
         if (art != null) v.setImageViewBitmap(R.id.art, art) else v.setImageViewResource(R.id.art, R.drawable.ic_widget_logo)
         val dur = s.getLong("durationMs", 0)
         v.setProgressBar(R.id.progress, 1000, if (dur > 0) (s.getLong("positionMs", 0) * 1000 / dur).toInt().coerceIn(0, 1000) else 0, false)
+        val pos = s.getLong("positionMs", 0)
+        v.setTextViewText(R.id.elapsed, if (has && dur > 0) clock(pos) else "")
+        v.setTextViewText(R.id.remaining, if (has && dur > 0) "-" + clock(dur - pos) else "")
+        skipIcons(v, s)
         v.setImageViewResource(R.id.play_pause, playIcon(s.getBoolean("playing", false)))
         v.setOnClickPendingIntent(R.id.play_pause, broadcast(ctx, ACTION_PLAY_PAUSE, 1))
         v.setOnClickPendingIntent(R.id.rewind, broadcast(ctx, ACTION_REWIND, 2))
@@ -126,8 +153,14 @@ class PlayPauseWidget : AppWidgetProvider() {
         val v = RemoteViews(ctx.packageName, R.layout.widget_play_pause)
         v.setTextViewText(R.id.title, if (has) s.getString("title", "") else "PodSync")
         v.setTextViewText(R.id.podcast, if (has) s.getString("podcast", "") else "Tap to play Up Next")
+        val art = cover(s.getString("art", null), 160)
+        if (has && art != null) v.setImageViewBitmap(R.id.art, art) else v.setImageViewResource(R.id.art, R.drawable.ic_widget_logo)
+        skipIcons(v, s)
         v.setImageViewResource(R.id.play_pause, playIcon(s.getBoolean("playing", false)))
         v.setOnClickPendingIntent(R.id.play_pause, broadcast(ctx, ACTION_PLAY_PAUSE, 11))
+        v.setOnClickPendingIntent(R.id.rewind, broadcast(ctx, ACTION_REWIND, 13))
+        v.setOnClickPendingIntent(R.id.forward, broadcast(ctx, ACTION_FORWARD, 14))
+        v.setOnClickPendingIntent(R.id.art, openApp(ctx, 12))
         v.setOnClickPendingIntent(R.id.open, openApp(ctx, 12))
         for (id in ids) mgr.updateAppWidget(id, v)
     }
