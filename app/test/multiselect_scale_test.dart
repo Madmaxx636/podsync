@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -52,11 +51,13 @@ void main() {
     expect(lib.settings.zoom, closeTo(0.99, 0.0001));
   });
 
-  testWidgets('Podcasts has the four iTunes views', (tester) async {
-    final (lib, _) = await pump(tester);
+  testWidgets('Podcasts has the Unplayed, My Podcasts and List views', (
+    tester,
+  ) async {
+    final (_, _) = await pump(tester);
     await tester.tap(find.text('Podcasts'));
     await tester.pumpAndSettle();
-    for (final t in ['Unplayed', 'My Podcasts', 'List', 'My Stations']) {
+    for (final t in ['Unplayed', 'My Podcasts', 'List']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
     // Unplayed: every unplayed episode, with the unplayed count above.
@@ -85,23 +86,6 @@ void main() {
     ); // the sidebar has one too
     await tester.pumpAndSettle();
     expect(find.text('Ep Two'), findsOneWidget);
-
-    // My Stations: the default station is Most Recent; a new one can be made.
-    await tester.tap(find.text('My Stations'));
-    await tester.pumpAndSettle();
-    expect(find.text('Most Recent'), findsOneWidget);
-    await tester.tap(find.byTooltip('New Station'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.byType(TextField),
-      ),
-      'Tech only',
-    );
-    await tester.tap(find.text('OK'));
-    await tester.pumpAndSettle();
-    expect(find.text('Tech only'), findsWidgets);
-    expect(lib.settings['stations'], contains('Tech only'));
+    expect(find.text('My Stations'), findsNothing);
   });
 }

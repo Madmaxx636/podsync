@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -13,87 +11,6 @@ import 'desktop_table.dart';
 import 'pal.dart';
 import 'podcast_settings.dart';
 import 'zoom.dart';
-
-/// A station: a saved rule that picks episodes from your subscriptions, like iTunes' My Stations.
-class Station {
-  Station({
-    required this.id,
-    required this.name,
-    this.feeds = const [],
-    this.perPodcast = 0,
-    this.newestFirst = true,
-    this.unplayedOnly = false,
-  });
-
-  final String id;
-  String name;
-
-  /// Feed URLs the station draws from; empty means every subscription.
-  List<String> feeds;
-
-  /// How many episodes to take from each podcast; 0 means all.
-  int perPodcast;
-  bool newestFirst;
-  bool unplayedOnly;
-
-  Map<String, Object> toJson() => {
-    'id': id,
-    'name': name,
-    'feeds': feeds,
-    'per': perPodcast,
-    'newest': newestFirst,
-    'unplayed': unplayedOnly,
-  };
-
-  static Station fromJson(Map<String, dynamic> j) => Station(
-    id: j['id'] as String? ?? DateTime.now().microsecondsSinceEpoch.toString(),
-    name: j['name'] as String? ?? 'Station',
-    feeds: [for (final f in (j['feeds'] as List? ?? const [])) '$f'],
-    perPodcast: (j['per'] as num?)?.toInt() ?? 0,
-    newestFirst: j['newest'] as bool? ?? true,
-    unplayedOnly: j['unplayed'] as bool? ?? false,
-  );
-
-  /// The episodes this station plays, in its order.
-  List<Episode> episodes(Library lib) {
-    final out = <Episode>[];
-    for (final p in lib.subscriptions) {
-      if (feeds.isNotEmpty && !feeds.contains(p.feedUrl)) continue;
-      var eps = [...lib.episodesOf(p.feedUrl)]
-        ..sort((a, b) => b.published.compareTo(a.published));
-      if (unplayedOnly) {
-        eps = eps.where((e) => !lib.progressOf(e.id).played).toList();
-      }
-      out.addAll(perPodcast > 0 ? eps.take(perPodcast) : eps);
-    }
-    out.sort(
-      (a, b) => newestFirst
-          ? b.published.compareTo(a.published)
-          : a.published.compareTo(b.published),
-    );
-    return out;
-  }
-}
-
-/// iTunes ships one station, "Most Recent": the newest episode of every subscription.
-Station _mostRecent() =>
-    Station(id: 'recent', name: 'Most Recent', perPodcast: 1);
-
-List<Station> loadStations(Library lib) {
-  final raw = lib.settings['stations'] as String;
-  final out = <Station>[];
-  if (raw.isNotEmpty) {
-    try {
-      for (final j in jsonDecode(raw) as List) {
-        out.add(Station.fromJson(j as Map<String, dynamic>));
-      }
-    } catch (_) {}
-  }
-  return out.isEmpty ? [_mostRecent()] : out;
-}
-
-void saveStations(Library lib, List<Station> all) =>
-    lib.setSetting('stations', jsonEncode([for (final s in all) s.toJson()]));
 
 /// Your subscriptions in the order you dragged them into, then any new ones A to Z.
 List<Podcast> orderedSubscriptions(Library lib) {
@@ -110,8 +27,7 @@ List<Podcast> orderedSubscriptions(Library lib) {
   ];
 }
 
-/// The Podcasts section as iTunes 11 lays it out: Unplayed, My Podcasts, List and My Stations
-/// across the top, each a different way into the same subscriptions.
+/// The Podcasts section as iTunes 11 lays it out: Unplayed, My Podcasts and List across the top, each a different way into the same subscriptions.
 class PodcastsLibrary extends StatelessWidget {
   const PodcastsLibrary({
     super.key,
@@ -128,7 +44,6 @@ class PodcastsLibrary extends StatelessWidget {
     'unplayed': 'Unplayed',
     'mine': 'My Podcasts',
     'list': 'List',
-    'stations': 'My Stations',
   };
 
   @override
@@ -145,7 +60,6 @@ class PodcastsLibrary extends StatelessWidget {
         onOpen: onOpen,
       ),
       'list' => _PodcastList(filter: filter, onOpen: onOpen),
-      'stations' => _Stations(filter: filter, onFocusEpisode: onFocusEpisode),
       _ => _Unplayed(
         filter: filter,
         onFocusEpisode: onFocusEpisode,
@@ -228,6 +142,13 @@ class _TabLabel extends StatelessWidget {
     );
   }
 }
+
+/// 1,234 as 1.2k, so a long count never crowds the row.
+String _short(int n) => n < 1000
+    ? '$n'
+    : (n < 10000
+          ? '${(n / 1000).toStringAsFixed(1)}k'
+          : '${(n / 1000).round()}k');
 
 bool _matches(Library lib, Episode e, String filter) =>
     filter.isEmpty ||
@@ -379,7 +300,7 @@ class _MyPodcastsState extends State<_MyPodcasts> {
             border: Border(right: BorderSide(color: pal.rule)),
           ),
           child: ReorderableListView.builder(
-            buildDefaultDragHandles: true,
+            buildDefaultDragHandles: false,
             itemCount: subs.length,
             // The new index already allows for the row being lifted out.
             onReorderItem: (from, to) {
@@ -433,17 +354,37 @@ class _MyPodcastsState extends State<_MyPodcasts> {
                               ),
                             ),
                           ),
-                          if (n > 0)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 28),
-                              child: Text(
-                                '$n',
-                                style: TextStyle(
-                                  fontSize: 12,
+                          // The count has its own right-aligned slot, so the numbers line up
+                          // in a column and never run into the drag handle.
+                          SizedBox(
+                            width: 40,
+                            child: Text(
+                              n == 0 ? '' : _short(n),
+                              textAlign: TextAlign.end,
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: sel ? Colors.white70 : pal.muted,
+                              ),
+                            ),
+                          ),
+                          ReorderableDragStartListener(
+                            index: i,
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.grab,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 12,
+                                ),
+                                child: Icon(
+                                  Icons.drag_indicator,
+                                  size: 18,
                                   color: sel ? Colors.white70 : pal.muted,
                                 ),
                               ),
                             ),
+                          ),
                         ],
                       ),
                     ),
@@ -947,331 +888,4 @@ Future<void> showPodcastDefaults(BuildContext context) {
       },
     ),
   );
-}
-
-// ---- My Stations -------------------------------------------------------------------------
-
-class _Stations extends StatefulWidget {
-  const _Stations({required this.filter, required this.onFocusEpisode});
-  final String filter;
-  final ValueChanged<Episode?> onFocusEpisode;
-
-  @override
-  State<_Stations> createState() => _StationsState();
-}
-
-class _StationsState extends State<_Stations> {
-  String? _id;
-
-  @override
-  Widget build(BuildContext context) {
-    final lib = context.watch<Library>();
-    final pal = Pal.of(context);
-    final player = context.read<PlayerController>();
-    final all = loadStations(lib);
-    final current = all.firstWhere((s) => s.id == _id, orElse: () => all.first);
-    final eps = current
-        .episodes(lib)
-        .where((e) => _matches(lib, e, widget.filter))
-        .toList();
-
-    Future<void> edit(Station? existing) async {
-      final result = await showDialog<Station>(
-        context: context,
-        builder: (c) => _StationEditor(lib: lib, station: existing),
-      );
-      if (result == null) return;
-      final next = [...all];
-      final i = next.indexWhere((s) => s.id == result.id);
-      i >= 0 ? next[i] = result : next.add(result);
-      saveStations(lib, next);
-      setState(() => _id = result.id);
-    }
-
-    return Row(
-      children: [
-        Container(
-          width: 210,
-          decoration: BoxDecoration(
-            color: pal.sidebar,
-            border: Border(right: BorderSide(color: pal.rule)),
-          ),
-          child: Column(
-            children: [
-              Expanded(
-                child: ListView(
-                  children: [
-                    for (final s in all)
-                      GestureDetector(
-                        onSecondaryTapDown: (d) async {
-                          final pick = await showMenu<String>(
-                            context: context,
-                            position: RelativeRect.fromLTRB(
-                              d.globalPosition.dx,
-                              d.globalPosition.dy,
-                              d.globalPosition.dx,
-                              0,
-                            ),
-                            items: [
-                              const PopupMenuItem(
-                                value: 'edit',
-                                child: Text('Edit Station…'),
-                              ),
-                              if (all.length > 1)
-                                const PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text('Delete Station'),
-                                ),
-                            ],
-                          );
-                          if (pick == 'edit') await edit(s);
-                          if (pick == 'delete') {
-                            saveStations(lib, [
-                              for (final x in all)
-                                if (x.id != s.id) x,
-                            ]);
-                          }
-                        },
-                        child: InkWell(
-                          onTap: () => setState(() => _id = s.id),
-                          onDoubleTap: () {
-                            final list = s.episodes(lib);
-                            if (list.isNotEmpty) {
-                              lib.enqueueAll([
-                                for (final e in list.skip(1)) e.id,
-                              ], next: true);
-                              player.play(list.first);
-                            }
-                          },
-                          child: Container(
-                            height: 30,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            color: s.id == current.id
-                                ? pal.selected
-                                : Colors.transparent,
-                            alignment: Alignment.centerLeft,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.radio,
-                                  size: 16,
-                                  color: s.id == current.id
-                                      ? Colors.white
-                                      : pal.muted,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    s.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      color: s.id == current.id
-                                          ? Colors.white
-                                          : pal.text,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Container(
-                height: 32,
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: pal.rule)),
-                ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      tooltip: 'New Station',
-                      icon: const Icon(Icons.add, size: 18),
-                      onPressed: () => edit(null),
-                    ),
-                    IconButton(
-                      tooltip: 'Edit this station',
-                      icon: const Icon(Icons.tune, size: 18),
-                      onPressed: () => edit(current),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Column(
-            children: [
-              Container(
-                height: 32,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '${current.name}: ${eps.length} episodes. Double-click an episode to play from there.',
-                  style: TextStyle(fontSize: 12.5, color: pal.muted),
-                ),
-              ),
-              Expanded(
-                child: EpisodeTable(
-                  key: ValueKey('station:${current.id}:${eps.length}'),
-                  episodes: eps,
-                  keepOrder: true,
-                  emptyText: 'Nothing matches this station yet',
-                  onFocusEpisode: widget.onFocusEpisode,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _StationEditor extends StatefulWidget {
-  const _StationEditor({required this.lib, this.station});
-  final Library lib;
-  final Station? station;
-
-  @override
-  State<_StationEditor> createState() => _StationEditorState();
-}
-
-class _StationEditorState extends State<_StationEditor> {
-  late final TextEditingController _name = TextEditingController(
-    text: widget.station?.name ?? 'New Station',
-  );
-  late bool _all = widget.station?.feeds.isEmpty ?? true;
-  late final Set<String> _feeds = {...?widget.station?.feeds};
-  late int _per = widget.station?.perPodcast ?? 0;
-  late bool _newest = widget.station?.newestFirst ?? true;
-  late bool _unplayed = widget.station?.unplayedOnly ?? false;
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final subs = orderedSubscriptions(widget.lib);
-    return AlertDialog(
-      title: Text(widget.station == null ? 'New Station' : 'Edit Station'),
-      content: SizedBox(
-        width: 400,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: _name,
-                decoration: const InputDecoration(labelText: 'Name'),
-              ),
-              const SizedBox(height: 8),
-              const Text('Podcasts'),
-              RadioGroup<bool>(
-                groupValue: _all,
-                onChanged: (v) => setState(() => _all = v ?? true),
-                child: const Column(
-                  children: [
-                    RadioListTile<bool>(
-                      dense: true,
-                      value: true,
-                      title: Text('All podcasts'),
-                    ),
-                    RadioListTile<bool>(
-                      dense: true,
-                      value: false,
-                      title: Text('Selected podcasts'),
-                    ),
-                  ],
-                ),
-              ),
-              if (!_all)
-                for (final p in subs)
-                  CheckboxListTile(
-                    dense: true,
-                    value: _feeds.contains(p.feedUrl),
-                    title: Text(p.displayTitle, maxLines: 1),
-                    onChanged: (v) => setState(() {
-                      v == true
-                          ? _feeds.add(p.feedUrl)
-                          : _feeds.remove(p.feedUrl);
-                    }),
-                  ),
-              Row(
-                children: [
-                  const Expanded(child: Text('Episodes from each podcast')),
-                  DropdownButton<int>(
-                    value: _per,
-                    items: [
-                      const DropdownMenuItem(value: 0, child: Text('All')),
-                      for (final n in [1, 2, 3, 5, 10, 25])
-                        DropdownMenuItem(value: n, child: Text('Latest $n')),
-                    ],
-                    onChanged: (v) => setState(() => _per = v ?? 0),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  const Expanded(child: Text('Play order')),
-                  DropdownButton<bool>(
-                    value: _newest,
-                    items: const [
-                      DropdownMenuItem(
-                        value: true,
-                        child: Text('Newest first'),
-                      ),
-                      DropdownMenuItem(
-                        value: false,
-                        child: Text('Oldest first'),
-                      ),
-                    ],
-                    onChanged: (v) => setState(() => _newest = v ?? true),
-                  ),
-                ],
-              ),
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: _unplayed,
-                title: const Text('Only unplayed episodes'),
-                onChanged: (v) => setState(() => _unplayed = v ?? false),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(
-            context,
-            Station(
-              id:
-                  widget.station?.id ??
-                  DateTime.now().microsecondsSinceEpoch.toString(),
-              name: _name.text.trim().isEmpty ? 'Station' : _name.text.trim(),
-              feeds: _all ? [] : _feeds.toList(),
-              perPodcast: _per,
-              newestFirst: _newest,
-              unplayedOnly: _unplayed,
-            ),
-          ),
-          child: const Text('OK'),
-        ),
-      ],
-    );
-  }
 }

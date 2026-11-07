@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.1 - 2026-11-07
+
+Windows and Linux.
+
+- My Podcasts: the unplayed counts now sit in their own right-aligned column, in line, with the drag handle (three bars) after it, so the two no longer run into each other. Counts over a thousand are shortened (2.0k). The handle is now the only place that starts a drag.
+- My Stations is gone from the Podcasts section; it is back only if PodSync gets internet radio.
+
 ## 0.12.0 - 2026-11-07
 
 Windows and Linux.
