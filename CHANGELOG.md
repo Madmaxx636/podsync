@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.1 - 2026-11-07
+
+Windows and Linux.
+
+- Fixed a second copy of PodSync opening when you click its icon on the taskbar or in the Start menu while the first is closed to the tray. The first copy was reached through a fixed port number, and Windows keeps ranges of port numbers for itself on many machines (Hyper-V, WSL, Docker), so on those the first copy could fail to listen and a second one started. It now lets the system pick a free port and leaves it in a small file in its data folder for the second launch to read. It also starts listening before the rest of start-up, so a second launch during start-up is caught too, and the second copy leaves even if showing the window fails.
+- Update check: it now looks through the last dozen releases for the newest one that has an installer for your system, so a release made for another platform (an Android-only one) no longer hides a Windows or Linux update.
+
 ## 0.11.2 - 2026-11-06
 
 Android.

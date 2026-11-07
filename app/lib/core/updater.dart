@@ -133,37 +133,40 @@ class UpdateController extends ChangeNotifier {
     message = null;
     notifyListeners();
     try {
+      // The recent releases, newest first: a release made for another platform (an Android-only
+      // one, say) must not hide an earlier one that has this platform's installer.
       final r = await _client
           .get(
-            Uri.https('api.github.com', '/repos/$releasesRepo/releases/latest'),
+            Uri.https('api.github.com', '/repos/$releasesRepo/releases', {
+              'per_page': '12',
+            }),
             headers: {'Accept': 'application/vnd.github+json'},
           )
           .timeout(const Duration(seconds: 20));
       if (r.statusCode != 200) {
         throw HttpException('GitHub answered ${r.statusCode}');
       }
-      final j = jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
-      final tag = (j['tag_name'] as String? ?? '').replaceFirst(
-        RegExp(r'^v'),
-        '',
-      );
-      if (tag.isNotEmpty && isNewerVersion(tag, current)) {
+      final list = jsonDecode(utf8.decode(r.bodyBytes)) as List;
+      final want = assetName ?? updateAssetName();
+      UpdateInfo? best;
+      for (final item in list) {
+        final j = item as Map<String, dynamic>;
+        if (j['draft'] == true || j['prerelease'] == true) continue;
+        final tag = (j['tag_name'] as String? ?? '').replaceFirst(
+          RegExp(r'^v'),
+          '',
+        );
+        if (tag.isEmpty || !isNewerVersion(tag, current)) continue;
+        if (best != null && !isNewerVersion(tag, best.version)) continue;
         Uri? asset, sums;
-        final want = assetName ?? updateAssetName();
         for (final a in (j['assets'] as List? ?? const [])) {
           final name = a['name'] as String? ?? '';
           final url = Uri.tryParse(a['browser_download_url'] as String? ?? '');
           if (name == want) asset = url;
           if (name == 'SHA256SUMS.txt') sums = url;
         }
-        // A release without this platform's installer (an Android-only release on a desktop,
-        // say) is not an update for it.
-        if (asset == null) {
-          available = null;
-          if (manual) message = 'PodSync $current is the latest version';
-          return;
-        }
-        available = UpdateInfo(
+        if (asset == null) continue; // nothing here for this platform
+        best = UpdateInfo(
           version: tag,
           notes: (j['body'] as String? ?? '').trim(),
           pageUrl:
@@ -172,9 +175,10 @@ class UpdateController extends ChangeNotifier {
           assetUrl: asset,
           sumsUrl: sums,
         );
-      } else {
-        available = null;
-        if (manual) message = 'PodSync $current is the latest version';
+      }
+      available = best;
+      if (best == null && manual) {
+        message = 'PodSync $current is the latest version';
       }
     } catch (e) {
       if (manual) error = 'Could not check for updates: ${cleanError(e)}';

@@ -24,9 +24,19 @@ import 'ui/zoom.dart';
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   // A second launch (e.g. the taskbar icon while PodSync sits in the tray) wakes the running copy.
-  if (DesktopIntegration.supported &&
-      await SingleInstance.handOverToRunning()) {
-    exit(0);
+  void Function()? raiseWindow;
+  var raiseRequested = false; // a second launch during start-up
+  if (DesktopIntegration.supported) {
+    if (await SingleInstance.handOverToRunning()) exit(0);
+    // Listen straight away, before the slow start-up, so a second launch in that time is caught.
+    await SingleInstance.listen(() {
+      final raise = raiseWindow;
+      if (raise != null) {
+        raise();
+      } else {
+        raiseRequested = true;
+      }
+    });
   }
   if (!Platform.isAndroid) {
     JustAudioMediaKit.ensureInitialized(linux: true, windows: true);
@@ -68,7 +78,8 @@ Future<void> main(List<String> args) async {
     await DesktopIntegration.prepareWindow(library, args);
     final desktop = DesktopIntegration(library, player, downloads: downloads);
     await desktop.start();
-    await SingleInstance.listen(desktop.showWindow);
+    raiseWindow = desktop.showWindow;
+    if (raiseRequested) desktop.showWindow();
   }
 
   runApp(

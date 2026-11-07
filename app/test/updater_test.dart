@@ -23,23 +23,26 @@ void main() {
 
     MockClient releases({String sum = ''}) => MockClient((r) async {
       switch (r.url.path) {
-        case '/repos/Madmaxx636/podsync-releases/releases/latest':
+        case '/repos/Madmaxx636/podsync-releases/releases':
           return http.Response(
-            jsonEncode({
-              'tag_name': 'v0.3.0',
-              'body': 'Faster everything',
-              'html_url': 'https://example.test/release',
-              'assets': [
-                {
-                  'name': 'PodSync-android.apk',
-                  'browser_download_url': 'https://dl.test/PodSync-android.apk',
-                },
-                {
-                  'name': 'SHA256SUMS.txt',
-                  'browser_download_url': 'https://dl.test/SHA256SUMS.txt',
-                },
-              ],
-            }),
+            jsonEncode([
+              {
+                'tag_name': 'v0.3.0',
+                'body': 'Faster everything',
+                'html_url': 'https://example.test/release',
+                'assets': [
+                  {
+                    'name': 'PodSync-android.apk',
+                    'browser_download_url':
+                        'https://dl.test/PodSync-android.apk',
+                  },
+                  {
+                    'name': 'SHA256SUMS.txt',
+                    'browser_download_url': 'https://dl.test/SHA256SUMS.txt',
+                  },
+                ],
+              },
+            ]),
             200,
           );
         case '/PodSync-android.apk':
@@ -152,5 +155,43 @@ void main() {
       expect(ran, hasLength(2));
       expect(downloads, 1);
     });
+  });
+
+  test('a newer release without this platform\'s installer does not hide an older one that has it', () async {
+    final client = MockClient((r) async {
+      return http.Response(
+        jsonEncode([
+          {
+            'tag_name': 'v0.5.0',
+            'assets': [
+              {
+                'name': 'PodSync-android.apk',
+                'browser_download_url': 'https://dl.test/a.apk',
+              },
+            ],
+          },
+          {
+            'tag_name': 'v0.4.0',
+            'assets': [
+              {
+                'name': 'PodSync-Setup-x64.exe',
+                'browser_download_url': 'https://dl.test/s.exe',
+              },
+            ],
+          },
+        ]),
+        200,
+      );
+    });
+    final up = UpdateController(
+      Library(),
+      client: client,
+      currentVersion: '0.3.0',
+      assetName: 'PodSync-Setup-x64.exe',
+      tempDir: Directory.systemTemp.createTempSync('upd'),
+    );
+    await up.check();
+    expect(up.available?.version, '0.4.0');
+    expect(up.available?.assetUrl?.path, '/s.exe');
   });
 }
