@@ -143,4 +143,40 @@ void main() {
     await tester.pumpAndSettle();
     expect(y('Ep Two'), lessThan(y('Ep One')));
   });
+
+  testWidgets('the Sort menus change the order in My Podcasts and Unplayed', (
+    tester,
+  ) async {
+    final (lib, _) = await pump(tester);
+    double y(String t) => tester.getTopLeft(find.text(t)).dy;
+    await tester.tap(find.text('Podcasts'));
+    await tester.pumpAndSettle();
+
+    // Unplayed has one unplayed episode in the fixture, so give it company first.
+    lib.markPlayed(one, false);
+    await tester.pumpAndSettle();
+    expect(y('Ep Two'), lessThan(y('Ep One'))); // newest first to begin with
+    await tester.tap(find.byTooltip('Sort episodes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Date, oldest first'));
+    await tester.pumpAndSettle();
+    expect(lib.settings['unplayedSort'], 'dateAsc');
+    expect(y('Ep One'), lessThan(y('Ep Two')));
+
+    // My Podcasts: the show's own order, stored with the show.
+    await tester.tap(find.text('My Podcasts'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Sort episodes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Title, Z to A'));
+    await tester.pumpAndSettle();
+    final feed = lib.subscriptions.first.feedUrl;
+    expect(lib.podcasts[feed]!.extra['epSort'], 'titleDesc');
+    expect(y('Ep Two'), lessThan(y('Ep One'))); // Z to A: Two before One
+    await tester.tap(find.byTooltip('Sort episodes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Title, A to Z'));
+    await tester.pumpAndSettle();
+    expect(y('Ep One'), lessThan(y('Ep Two')));
+  });
 }

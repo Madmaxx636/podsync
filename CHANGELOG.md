@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.1 - 2026-11-07
+
+Windows and Linux.
+
+- Podcasts > My Podcasts: sorting works again. The redrawn view had no way to change the order. It now has a Sort button beside Old Episodes and Settings (date, title or length, either way) and follows the order set for that show, including the Episode sort order in its own Settings; it was ignoring them and always showing newest first.
+- Podcasts > Unplayed: a Sort menu at the right of the tab bar (date, title, length, or by podcast). The choice is kept.
+
 ## 0.14.0 - 2026-11-07
 
 Windows, Linux and Android.

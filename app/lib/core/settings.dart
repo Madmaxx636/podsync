@@ -114,6 +114,7 @@ class AppSettings {
         'rewind,play,forward,next', // phone: buttons on that bar, in order
     'podcastsTab':
         'unplayed', // desktop Podcasts section: unplayed | mine | list
+    'unplayedSort': '', // desktop Podcasts > Unplayed: dateDesc | dateAsc | titleAsc | ... ('' = follow the old setting)
     'podcastsSelected': '', // desktop My Podcasts: the show you were looking at
     'podcastOrder': '', // desktop My Podcasts: feed URLs in the order you dragged them, one per line
     'podcastsView': '', // phone: '' (grid, or list on e-ink) | grid | list

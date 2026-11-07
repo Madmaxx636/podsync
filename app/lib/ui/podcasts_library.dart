@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/downloads.dart';
+import '../core/episode_view.dart';
 import '../core/library.dart';
 import '../core/models.dart';
 import '../core/player.dart';
@@ -94,6 +95,100 @@ bool _matches(Library lib, Episode e, String filter) =>
 
 const _blue = Color(0xFF3D7BD9);
 
+const _sortChoices = {
+  'dateDesc': 'Date, newest first',
+  'dateAsc': 'Date, oldest first',
+  'titleAsc': 'Title, A to Z',
+  'titleDesc': 'Title, Z to A',
+  'durationAsc': 'Length, shortest first',
+  'durationDesc': 'Length, longest first',
+};
+
+/// Sorts [eps] by one of the keys above (and, for Unplayed, 'podcastAsc': by show, then newest
+/// first). Equal rows always fall back to newest first so they never jump about.
+List<Episode> _sorted(Library lib, String key, List<Episode> eps) {
+  final asc = key.endsWith('Asc');
+  final field = key.replaceAll(RegExp(r'(Asc|Desc)$'), '');
+  final titles = field == 'podcast'
+      ? {
+          for (final e in eps)
+            e.feedUrl: lib.podcastTitle(e.feedUrl).toLowerCase(),
+        }
+      : const <String, String>{};
+  int primary(Episode a, Episode b) => switch (field) {
+    'title' => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+    'duration' => a.durationMs.compareTo(b.durationMs),
+    'podcast' => titles[a.feedUrl]!.compareTo(titles[b.feedUrl]!),
+    _ => a.published.compareTo(b.published),
+  };
+  return [...eps]..sort((a, b) {
+    final c = primary(a, b);
+    if (c != 0) return asc ? c : -c;
+    return b.published.compareTo(a.published);
+  });
+}
+
+/// The "Sort" menu of the Unplayed and My Podcasts views.
+class _SortButton extends StatelessWidget {
+  const _SortButton({
+    required this.current,
+    required this.onPick,
+    this.extra = const {},
+    this.label = false,
+  });
+  final String current;
+  final ValueChanged<String> onPick;
+  final Map<String, String> extra;
+  final bool
+  label; // icon with a caption under it, like the other header buttons
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = Pal.of(context);
+    return PopupMenuButton<String>(
+      tooltip: 'Sort episodes',
+      onSelected: onPick,
+      itemBuilder: (c) => [
+        for (final e in {..._sortChoices, ...extra}.entries)
+          CheckedPopupMenuItem(
+            value: e.key,
+            checked: e.key == current,
+            child: Text(e.value),
+          ),
+      ],
+      child: label
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.sort, size: 20, color: pal.muted),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Sort',
+                    style: TextStyle(fontSize: 11, color: pal.muted),
+                  ),
+                ],
+              ),
+            )
+          : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.sort, size: 16, color: pal.muted),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Sort',
+                    style: TextStyle(fontSize: 12.5, color: pal.muted),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
 /// The status bar text for the Podcasts section, in iTunes' words.
 String podcastsStatus(Library lib) {
   final tab = lib.settings['podcastsTab'];
@@ -154,6 +249,10 @@ class PodcastsLibrary extends StatelessWidget {
     final tab = tabs.containsKey(lib.settings['podcastsTab'])
         ? lib.settings['podcastsTab'] as String
         : 'unplayed';
+    // Unplayed has its own sort, kept on this device; the old "oldest first" setting is the start.
+    final unplayedSort = (lib.settings['unplayedSort'] as String).isNotEmpty
+        ? lib.settings['unplayedSort'] as String
+        : (lib.settings.sortOldestFirst ? 'dateAsc' : 'dateDesc');
     final body = switch (tab) {
       'mine' => _MyPodcasts(
         filter: filter,
@@ -162,17 +261,11 @@ class PodcastsLibrary extends StatelessWidget {
       ),
       'list' => _PodcastList(filter: filter, onOpen: onOpen, onStore: onStore),
       _ => _BigEpisodes(
-        episodes:
-            [
-              for (final p in lib.subscriptions)
-                for (final e in lib.episodesOf(p.feedUrl))
-                  if (!lib.progressOf(e.id).played && _matches(lib, e, filter))
-                    e,
-            ]..sort(
-              (a, b) => lib.settings.sortOldestFirst
-                  ? a.published.compareTo(b.published)
-                  : b.published.compareTo(a.published),
-            ),
+        episodes: _sorted(lib, unplayedSort, [
+          for (final p in lib.subscriptions)
+            for (final e in lib.episodesOf(p.feedUrl))
+              if (!lib.progressOf(e.id).played && _matches(lib, e, filter)) e,
+        ]),
         mode: _RowMode.unplayed,
         onFocusEpisode: onFocusEpisode,
         onOpen: onOpen,
@@ -219,7 +312,13 @@ class PodcastsLibrary extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 36),
+              tab == 'unplayed'
+                  ? _SortButton(
+                      current: unplayedSort,
+                      onPick: (k) => lib.setSetting('unplayedSort', k),
+                      extra: const {'podcastAsc': 'Podcast, A to Z'},
+                    )
+                  : const SizedBox(width: 36),
             ],
           ),
         ),
@@ -589,8 +688,13 @@ class _MyPodcastsState extends State<_MyPodcasts> {
       (p) => p.feedUrl == chosen,
       orElse: () => subs.first,
     );
-    final all = [...lib.episodesOf(current.feedUrl)]
-      ..sort((a, b) => b.published.compareTo(a.published));
+    // The show's own sort order (its Sort button here, or Episode sort order in its Settings);
+    // otherwise the global one.
+    final ownSort = EpisodeView.sortOf(current);
+    final sortKey = ownSort.isNotEmpty
+        ? ownSort
+        : (lib.settings.sortOldestFirst ? 'dateAsc' : 'dateDesc');
+    final all = _sorted(lib, sortKey, lib.episodesOf(current.feedUrl));
     final unplayed = [
       for (final e in all)
         if (!lib.progressOf(e.id).played) e,
@@ -824,6 +928,14 @@ class _MyPodcastsState extends State<_MyPodcasts> {
                         primary: true,
                       ),
                     ] else ...[
+                      _SortButton(
+                        current: sortKey,
+                        label: true,
+                        onPick: (k) => lib.updatePodcastSettings(
+                          current.feedUrl,
+                          extra: {'epSort': k},
+                        ),
+                      ),
                       iconLabel(
                         Icons.history,
                         'Old Episodes',
