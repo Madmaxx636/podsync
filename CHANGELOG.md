@@ -6,6 +6,7 @@ Windows and Linux.
 
 - My Podcasts: the unplayed counts now sit in their own right-aligned column, in line, with the drag handle (three bars) after it, so the two no longer run into each other. Counts over a thousand are shortened (2.0k). The handle is now the only place that starts a drag.
 - My Stations is gone from the Podcasts section; it is back only if PodSync gets internet radio.
+- Every panel can be resized by dragging its edge, like the table columns, and double-clicking an edge puts it back: the sidebar (now up to 480 px wide), the details pane on the right, the list of shows in My Podcasts, and the list of groups in Settings. The artwork under the sidebar has a bar above it: drag up to make it bigger (up to the sidebar's width) or down to make it smaller. The sizes are remembered.
 
 ## 0.12.0 - 2026-11-07
 

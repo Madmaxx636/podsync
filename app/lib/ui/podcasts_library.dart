@@ -10,6 +10,7 @@ import 'context_menus.dart';
 import 'desktop_table.dart';
 import 'pal.dart';
 import 'podcast_settings.dart';
+import 'resize.dart';
 import 'zoom.dart';
 
 /// Your subscriptions in the order you dragged them into, then any new ones A to Z.
@@ -294,11 +295,8 @@ class _MyPodcastsState extends State<_MyPodcasts> {
     return Row(
       children: [
         Container(
-          width: 230,
-          decoration: BoxDecoration(
-            color: pal.sidebar,
-            border: Border(right: BorderSide(color: pal.rule)),
-          ),
+          width: lib.settings.podsColumnWidth,
+          color: pal.sidebar,
           child: ReorderableListView.builder(
             buildDefaultDragHandles: false,
             itemCount: subs.length,
@@ -393,6 +391,13 @@ class _MyPodcastsState extends State<_MyPodcasts> {
               );
             },
           ),
+        ),
+        VerticalSplitter(
+          onDrag: (dx) => lib.setSetting(
+            'podsColumnWidth',
+            (lib.settings.podsColumnWidth + dx).clamp(150.0, 520.0),
+          ),
+          onReset: () => lib.setSetting('podsColumnWidth', 230.0),
         ),
         Expanded(
           child: Column(

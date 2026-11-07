@@ -1,6 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:podsync/ui/resize.dart';
+
 import 'desktop_features_test.dart' show pump;
 
 void main() {
@@ -88,4 +90,34 @@ void main() {
     expect(find.text('Ep Two'), findsOneWidget);
     expect(find.text('My Stations'), findsNothing);
   });
+
+  testWidgets(
+    'the details pane and the My Podcasts column resize by dragging',
+    (tester) async {
+      final (lib, _) = await pump(tester);
+      lib.setSetting('showDetails', true);
+      await tester.pump();
+      // Details pane: its splitter is the bar at its left edge.
+      expect(lib.settings.detailsWidth, 300.0);
+      final splitters = find.byType(VerticalSplitter);
+      await tester.drag(splitters.last, const Offset(-80, 0));
+      await tester.pump();
+      expect(lib.settings.detailsWidth, closeTo(380, 21));
+      await tester.drag(splitters.last, const Offset(1000, 0));
+      await tester.pump();
+      expect(lib.settings.detailsWidth, 200.0); // never narrower than usable
+
+      // My Podcasts column.
+      await tester.tap(find.text('Podcasts'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('My Podcasts'));
+      await tester.pumpAndSettle();
+      expect(lib.settings.podsColumnWidth, 230.0);
+      final mine = find.byType(VerticalSplitter).at(1); // after the sidebar's
+      await tester.drag(mine, const Offset(70, 0));
+      await tester.pump();
+      expect(lib.settings.podsColumnWidth, closeTo(300, 21));
+      await tester.pump(const Duration(milliseconds: 400));
+    },
+  );
 }

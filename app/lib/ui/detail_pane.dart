@@ -32,7 +32,7 @@ class EpisodeDetailPane extends StatelessWidget {
     final e = episode ?? player.current;
 
     return Container(
-      width: 300,
+      width: lib.settings.detailsWidth,
       decoration: BoxDecoration(
         color: pal.sidebar,
         border: Border(left: BorderSide(color: pal.rule)),

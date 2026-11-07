@@ -128,6 +128,11 @@ class AppSettings {
     'colStartsAt': true,
     'colEndsAt': true,
     'sidebarWidth': 200.0,
+    'settingsListWidth': 250.0, // the list of groups in Settings
+    'detailsWidth': 300.0, // the info pane on the right
+    'podsColumnWidth': 230.0, // the list of shows in Podcasts > My Podcasts
+    'artworkSize':
+        0.0, // the artwork square under the sidebar; 0 = as wide as the sidebar
     // Top bar layout (Customize Toolbar): the order of its parts and their sizes
     'toolbarOrder':
         'transport,volume,display,upnext,downloads,sleep,speed,search',
@@ -409,6 +414,10 @@ class AppSettings {
   bool get downloadWifiOnly => _get('downloadWifiOnly');
   String get downloadDir => _get('downloadDir');
   double get sidebarWidth => _get('sidebarWidth');
+  double get settingsListWidth => _get('settingsListWidth');
+  double get detailsWidth => _get('detailsWidth');
+  double get podsColumnWidth => _get('podsColumnWidth');
+  double get artworkSize => _get('artworkSize');
   int get tableRowHeight => _get('tableRowHeight');
   bool get colTime => _get('colTime');
   bool get colPodcast => _get('colPodcast');

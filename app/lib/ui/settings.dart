@@ -16,6 +16,7 @@ import 'common.dart';
 import 'download_folder.dart';
 import 'paged.dart';
 import 'podcast_settings.dart';
+import 'resize.dart';
 import 'update_ui.dart';
 
 // ---- model -------------------------------------------------------------------
@@ -1486,7 +1487,7 @@ class _SettingsPaneState extends State<SettingsPane> {
     return Row(
       children: [
         SizedBox(
-          width: 250,
+          width: lib.settings.settingsListWidth,
           child: Column(
             children: [
               Padding(
@@ -1545,7 +1546,13 @@ class _SettingsPaneState extends State<SettingsPane> {
             ],
           ),
         ),
-        const VerticalDivider(width: 1),
+        VerticalSplitter(
+          onDrag: (dx) => lib.setSetting(
+            'settingsListWidth',
+            (lib.settings.settingsListWidth + dx).clamp(180.0, 520.0),
+          ),
+          onReset: () => lib.setSetting('settingsListWidth', 250.0),
+        ),
         Expanded(
           child: Align(
             alignment: Alignment.topLeft,

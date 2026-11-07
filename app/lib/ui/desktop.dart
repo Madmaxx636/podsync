@@ -19,6 +19,7 @@ import 'episode_filter.dart';
 import 'interface_menu.dart';
 import 'downloads_ui.dart';
 import 'pal.dart';
+import 'resize.dart';
 import 'podcasts_library.dart';
 import 'zoom.dart';
 import 'mini_player.dart';
@@ -271,30 +272,29 @@ class _DesktopShellState extends State<DesktopShell> {
                           onSelect: _go,
                           onCustomize: _customize,
                         ),
-                        // Drag the edge to resize the sidebar.
-                        MouseRegion(
-                          cursor: SystemMouseCursors.resizeColumn,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onHorizontalDragUpdate: (d) => lib.setSetting(
-                              'sidebarWidth',
-                              (s.sidebarWidth + d.delta.dx).clamp(140.0, 360.0),
-                            ),
-                            child: SizedBox(
-                              width: 5,
-                              child: Center(
-                                child: Container(width: 1, color: pal.rule),
-                              ),
-                            ),
+                        // Drag the edge to resize the sidebar; double-click puts it back.
+                        VerticalSplitter(
+                          onDrag: (dx) => lib.setSetting(
+                            'sidebarWidth',
+                            (s.sidebarWidth + dx).clamp(140.0, 480.0),
                           ),
+                          onReset: () => lib.setSetting('sidebarWidth', 200.0),
                         ),
                       ],
                       Expanded(child: _content(lib)),
-                      if (s.showDetails && _isTable)
+                      if (s.showDetails && _isTable) ...[
+                        VerticalSplitter(
+                          onDrag: (dx) => lib.setSetting(
+                            'detailsWidth',
+                            (s.detailsWidth - dx).clamp(200.0, 700.0),
+                          ),
+                          onReset: () => lib.setSetting('detailsWidth', 300.0),
+                        ),
                         EpisodeDetailPane(
                           episode: _detailEpisode,
                           onGoToPodcast: (f) => _go(_Show(f)),
                         ),
+                      ],
                     ],
                   ),
                 ),
@@ -828,6 +828,18 @@ class _Sidebar extends StatelessWidget {
               ),
             ),
           ),
+          if (lib.settings.showArtworkPane &&
+              context.select<PlayerController, bool>((p) => p.current != null))
+            // Drag up to make the artwork bigger (as far as the sidebar is wide), down to shrink.
+            HorizontalSplitter(
+              onDrag: (dy) {
+                final cur = lib.settings.artworkSize > 0
+                    ? lib.settings.artworkSize
+                    : lib.settings.sidebarWidth;
+                lib.setSetting('artworkSize', (cur - dy).clamp(100.0, 480.0));
+              },
+              onReset: () => lib.setSetting('artworkSize', 0.0),
+            ),
           if (lib.settings.showArtworkPane)
             _ArtworkPane(onGoToPodcast: (f) => onSelect(_Show(f))),
         ],
@@ -848,7 +860,11 @@ class _ArtworkPane extends StatelessWidget {
     final width = context.select<Library, double>(
       (l) => l.settings.sidebarWidth,
     );
-    final size = width.clamp(140.0, 260.0);
+    final wanted = context.select<Library, double>(
+      (l) => l.settings.artworkSize,
+    );
+    // As wide as the sidebar unless you dragged it smaller (it can never be wider than the sidebar).
+    final size = (wanted > 0 ? wanted : width).clamp(100.0, width);
     final hide = Tooltip(
       message: 'Hide the artwork (View menu brings it back)',
       child: InkWell(

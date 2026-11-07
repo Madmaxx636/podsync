@@ -434,10 +434,16 @@ void main() {
         expect(lib.settings.sidebarWidth, 200.0);
         await tester.drag(edge, const Offset(60, 0));
         await tester.pump();
-        expect(lib.settings.sidebarWidth, closeTo(260, 1));
+        expect(
+          lib.settings.sidebarWidth,
+          closeTo(260, 21),
+        ); // minus the drag slop
         await tester.drag(edge, const Offset(-400, 0));
         await tester.pump();
         expect(lib.settings.sidebarWidth, 140.0); // never narrower than usable
+        await tester.pump(
+          const Duration(milliseconds: 400),
+        ); // the double-click wait
       },
     );
 
