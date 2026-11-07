@@ -181,9 +181,11 @@ void main() {
       final rig = await pump(tester, const DesktopShell());
       await tester.tap(find.text('Podcasts'));
       await tester.pump();
+      await tester.tap(find.text('My Podcasts'));
+      await tester.pump();
       await tester.tap(
         find.descendant(
-          of: find.byType(GridView),
+          of: find.byType(ReorderableListView),
           matching: find.text('My Tech'),
         ),
         buttons: kSecondaryButton,

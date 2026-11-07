@@ -1,9 +1,16 @@
 # Changelog
 
-## 0.10.1 - 2026-11-07
+## 0.12.0 - 2026-11-07
 
 Windows and Linux.
 
+- Podcasts section rebuilt like iTunes 11's, with four views across the top.
+  - Unplayed: every unplayed episode from all your subscriptions, newest first (tick Oldest first to flip it).
+  - My Podcasts: your shows in a column you can drag into order, and the selected show's unplayed episodes beside it. Old Episodes shows the played ones too, with Done to go back; a circle at the end of each row puts it in Up Next; Add All queues every unplayed one; Settings opens that podcast's own settings. Right-click a show for its menu, or double-click it to open its page.
+  - List: the spreadsheet view. Each podcast is a row with an arrow that opens its episodes; click a heading to sort by name, time or release date; Settings at the bottom left holds the defaults for every podcast (automatic download, how often to check, how many episodes to keep).
+  - My Stations: rules that pick episodes from your subscriptions. "Most Recent" (the newest episode of each show) is there to start with. Make your own with the + button: which podcasts, how many episodes from each, newest or oldest first, unplayed only. Double-click a station to play it from the top; right-click to edit or delete.
+  - A refresh button at the left of the tabs checks for new episodes.
+- Episodes that are not downloaded keep their cloud icon in the download column, like iTunes' cloud badge.
 - Fixed a second copy of PodSync opening when you click its icon on the taskbar or in the Start menu while the first is closed to the tray. The first copy was reached through a fixed port number, and Windows keeps ranges of port numbers for itself on many machines (Hyper-V, WSL, Docker), so on those the first copy could fail to listen and a second one started. It now lets the system pick a free port and leaves it in a small file in its data folder for the second launch to read. It also starts listening before the rest of start-up, so a second launch during start-up is caught too, and the second copy leaves even if showing the window fails.
 - Update check: it now looks through the last dozen releases for the newest one that has an installer for your system, so a release made for another platform (an Android-only one) no longer hides a Windows or Linux update.
 

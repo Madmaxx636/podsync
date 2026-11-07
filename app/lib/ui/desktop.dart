@@ -19,6 +19,7 @@ import 'episode_filter.dart';
 import 'interface_menu.dart';
 import 'downloads_ui.dart';
 import 'pal.dart';
+import 'podcasts_library.dart';
 import 'zoom.dart';
 import 'mini_player.dart';
 import 'podcast_settings.dart';
@@ -371,7 +372,11 @@ class _DesktopShellState extends State<DesktopShell> {
     void focus(Episode? e) => setState(() => _detailEpisode = e);
     switch (s) {
       case _Library(kind: 'podcasts'):
-        return _PodcastGrid(onOpen: goPodcast, filter: filter);
+        return PodcastsLibrary(
+          filter: filter,
+          onOpen: goPodcast,
+          onFocusEpisode: focus,
+        );
       case _Library(kind: 'queue'):
         return Column(
           children: [
@@ -921,91 +926,6 @@ class _StatusBar extends StatelessWidget {
 }
 
 // ---- podcasts grid, show header, store ---------------------------------------
-
-class _PodcastGrid extends StatelessWidget {
-  const _PodcastGrid({required this.onOpen, required this.filter});
-  final ValueChanged<String> onOpen;
-  final String filter;
-
-  @override
-  Widget build(BuildContext context) {
-    final lib = context.watch<Library>();
-    final pal = Pal.of(context);
-    final subs = lib.subscriptions
-        .where(
-          (p) =>
-              filter.isEmpty ||
-              p.displayTitle.toLowerCase().contains(filter.toLowerCase()),
-        )
-        .toList();
-    if (subs.isEmpty) {
-      return Center(
-        child: Text(
-          'No podcasts. Use Find Podcasts to subscribe.',
-          style: TextStyle(color: pal.muted),
-        ),
-      );
-    }
-    return GridView.builder(
-      padding: const EdgeInsets.all(20),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 170,
-        mainAxisExtent: 220,
-        mainAxisSpacing: 16,
-        crossAxisSpacing: 16,
-      ),
-      itemCount: subs.length,
-      itemBuilder: (c, i) {
-        final p = subs[i];
-        return GestureDetector(
-          onSecondaryTapDown: (d) => showPodcastMenu(
-            c,
-            Zoom.at(context, d.globalPosition),
-            p.feedUrl,
-            onOpen: onOpen,
-          ),
-          child: InkWell(
-            onTap: () => onOpen(p.feedUrl),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  decoration: const BoxDecoration(
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 4,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Art(p.imageUrl, size: 170, radius: 0),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  p.displayTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: pal.text,
-                  ),
-                ),
-                Text(
-                  p.author,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: pal.muted),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
 
 class _ShowHeader extends StatefulWidget {
   const _ShowHeader(this.feedUrl);

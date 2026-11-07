@@ -112,6 +112,9 @@ class AppSettings {
     'playerBarSize': 'medium', // phone: height of the bar at the bottom, small|medium|large|huge
     'playerBarButtons':
         'rewind,play,forward,next', // phone: buttons on that bar, in order
+    'podcastsTab': 'unplayed', // desktop Podcasts section: unplayed | mine | list | stations
+    'podcastOrder': '', // desktop My Podcasts: feed URLs in the order you dragged them, one per line
+    'stations': '', // desktop My Stations: the stations, as JSON
     'podcastsView': '', // phone: '' (grid, or list on e-ink) | grid | list
     'gridColumns': 3, // phone: podcasts per row in the grid
     'playerBarButtonPct': 100, // phone: size of the bar's buttons, percent

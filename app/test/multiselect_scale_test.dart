@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -49,5 +50,58 @@ void main() {
     await tester.tap(find.byTooltip('Smaller by 1%').first);
     await tester.pumpAndSettle();
     expect(lib.settings.zoom, closeTo(0.99, 0.0001));
+  });
+
+  testWidgets('Podcasts has the four iTunes views', (tester) async {
+    final (lib, _) = await pump(tester);
+    await tester.tap(find.text('Podcasts'));
+    await tester.pumpAndSettle();
+    for (final t in ['Unplayed', 'My Podcasts', 'List', 'My Stations']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    // Unplayed: every unplayed episode, with the unplayed count above.
+    expect(find.textContaining(' unplayed'), findsWidgets);
+
+    // My Podcasts: Old Episodes shows the played ones; Add All fills Up Next; Done goes back.
+    await tester.tap(find.text('My Podcasts'));
+    await tester.pumpAndSettle();
+    expect(find.text('Old Episodes'), findsOneWidget);
+    expect(find.text('Add All'), findsOneWidget);
+    expect(find.text('Settings'), findsWidgets);
+    await tester.tap(find.text('Old Episodes'));
+    await tester.pumpAndSettle();
+    expect(find.text('Done'), findsOneWidget);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.text('Old Episodes'), findsOneWidget);
+
+    // List: a podcast row opens to show its episodes.
+    await tester.tap(find.text('List'));
+    await tester.pumpAndSettle();
+    expect(find.text('Release Date'), findsOneWidget);
+    expect(find.text('Ep Two'), findsNothing);
+    await tester.tap(
+      find.textContaining('My Tech').last,
+    ); // the sidebar has one too
+    await tester.pumpAndSettle();
+    expect(find.text('Ep Two'), findsOneWidget);
+
+    // My Stations: the default station is Most Recent; a new one can be made.
+    await tester.tap(find.text('My Stations'));
+    await tester.pumpAndSettle();
+    expect(find.text('Most Recent'), findsOneWidget);
+    await tester.tap(find.byTooltip('New Station'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'Tech only',
+    );
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tech only'), findsWidgets);
+    expect(lib.settings['stations'], contains('Tech only'));
   });
 }

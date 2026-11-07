@@ -151,35 +151,38 @@ void main() {
 
     await tester.tap(find.text('Podcasts'));
     await tester.pump();
-    expect(find.byType(GridView), findsOneWidget);
-
-    // Open a podcast from the grid.
-    await tester.tap(
-      find.descendant(
-        of: find.byType(GridView),
-        matching: find.text('My Tech'),
-      ),
-    );
+    await tester.tap(find.text('My Podcasts'));
     await tester.pump();
-    expect(find.byType(GridView), findsNothing);
+    expect(find.byType(ReorderableListView), findsOneWidget);
+
+    // Open a podcast from the list (double-click).
+    final row = find.descendant(
+      of: find.byType(ReorderableListView),
+      matching: find.text('My Tech'),
+    );
+    await tester.tap(row);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(row);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(ReorderableListView), findsNothing);
     expect(find.text('Subscribed'), findsOneWidget);
 
     // Back returns to the podcast grid, then to the episode list.
     await tester.tap(find.byTooltip('Go back'));
     await tester.pump();
-    expect(find.byType(GridView), findsOneWidget);
+    expect(find.byType(ReorderableListView), findsOneWidget);
     expect(onPressed('Go forward'), isNotNull);
 
     await tester.tap(find.byTooltip('Go back'));
     await tester.pump();
-    expect(find.byType(GridView), findsNothing);
+    expect(find.byType(ReorderableListView), findsNothing);
     expect(find.text('Ep Two'), findsOneWidget);
     expect(onPressed('Go back'), isNull);
 
     // Forward replays the path; going somewhere new drops what was ahead.
     await tester.tap(find.byTooltip('Go forward'));
     await tester.pump();
-    expect(find.byType(GridView), findsOneWidget);
+    expect(find.byType(ReorderableListView), findsOneWidget);
     await tester.tap(find.text('Favorites'));
     await tester.pump();
     expect(onPressed('Go forward'), isNull);
@@ -189,7 +192,7 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
     await tester.pump();
-    expect(find.byType(GridView), findsOneWidget);
+    expect(find.byType(ReorderableListView), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -317,9 +320,11 @@ void main() {
       final lib = await pumpDesktop(tester);
       await tester.tap(find.text('Podcasts'));
       await tester.pump();
+      await tester.tap(find.text('My Podcasts'));
+      await tester.pump();
       await tester.tap(
         find.descendant(
-          of: find.byType(GridView),
+          of: find.byType(ReorderableListView),
           matching: find.text('My Tech'),
         ),
         buttons: kSecondaryButton,

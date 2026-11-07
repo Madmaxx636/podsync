@@ -24,6 +24,7 @@ class EpisodeTable extends StatefulWidget {
     this.keepOrder = false,
     this.historyView = false,
     this.canReorder = true,
+    this.queueMarks = false,
     this.emptyText,
     this.onGoToPodcast,
     this.onFocusEpisode,
@@ -35,6 +36,7 @@ class EpisodeTable extends StatefulWidget {
   final bool keepOrder; // show in the given order (history), no column sorting
   final bool historyView;
   final bool canReorder; // false while a search filter hides part of the queue
+  final bool queueMarks; // a circle at the right of each row to put it in Up Next (My Podcasts)
   final String? emptyText;
   final ValueChanged<String>?
   onGoToPodcast; // "Go to Podcast" in the right-click menu
@@ -143,6 +145,7 @@ class _EpisodeTableState extends State<EpisodeTable> {
       if (showPodcast) _Col('podcast', 'Podcast', width: w('podcast', 220)),
       if (s.colRating) _Col('rating', 'Rating', width: w('rating', 92)),
       if (s.colDate) _Col('date', 'Release Date', width: w('date', 128)),
+      if (widget.queueMarks) const _Col('mark', '', width: 34),
       const _Col('play', '', width: 36),
     ];
     double othersWidth(String key) => [
@@ -344,6 +347,19 @@ class _EpisodeTableState extends State<EpisodeTable> {
             );
           case 'dl':
             return Center(child: DownloadIcon(e, size: 15, color: fg));
+          case 'mark':
+            final queued = lib.queue.contains(e.id);
+            return InstantIconButton(
+              icon: queued ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 17,
+              color: fg,
+              tooltip: queued
+                  ? 'In Up Next. Click to remove'
+                  : 'Add to Up Next',
+              onTap: () =>
+                  queued ? lib.removeFromQueue(e.id) : lib.enqueue(e.id),
+              width: 34,
+            );
           case 'name':
             return Padding(
               padding: pad,
