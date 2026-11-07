@@ -80,9 +80,9 @@ void main() {
       expect(find.text('All Categories'), findsOneWidget);
       expect(
         find.text('Name 3'),
-        findsNWidgets(2),
-      ); // once as a cover, once in the chart
-      expect(find.text('Name 1'), findsNWidgets(2));
+        findsWidgets,
+      ); // on the shelves and in the chart
+      expect(find.text('Name 1'), findsWidgets);
       expect(find.text('Name 2'), findsNothing); // had no feed address
       expect(find.text('1'), findsWidgets); // rank numbers
       expect(find.text('Subscribe'), findsWidgets);
@@ -134,7 +134,9 @@ void main() {
       await settle(tester);
       await tester.tap(find.text('All Categories'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Comedy'));
+      await tester.tap(
+        find.text('Comedy').last,
+      ); // the menu is drawn above the page
       await settle(tester);
       expect(rig.fake.urls.any((u) => u.path.contains('genre=1303')), isTrue);
       expect(find.text('Top Comedy'), findsOneWidget);

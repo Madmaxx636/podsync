@@ -71,7 +71,10 @@ void main() {
     await tester.tap(find.text('My Podcasts'));
     await tester.pumpAndSettle();
     expect(find.text('Old Episodes'), findsOneWidget);
-    expect(find.text('Settings'), findsWidgets); // this podcast's (and the menu's)
+    expect(
+      find.text('Settings'),
+      findsWidgets,
+    ); // this podcast's (and the menu's)
     expect(find.text('Ep One'), findsNothing); // it is played
     await tester.tap(find.text('Old Episodes'));
     await tester.pumpAndSettle();

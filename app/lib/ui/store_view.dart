@@ -29,6 +29,30 @@ class StoreController extends ChangeNotifier {
   String? error;
   int _generation = 0; // a newer request makes older answers irrelevant
 
+  /// The shelves under the top charts on the front page: a dozen of the top podcasts of each of
+  /// these categories, loaded one by one in the background.
+  static const shelfGenres = [1489, 1303, 1318, 1324, 1321, 1488, 1533, 1545];
+  final Map<int, List<StorePodcast>> shelves = {};
+  final Set<int> _loadingShelves = {};
+
+  void loadShelves() {
+    if (searching || genreId != null) return;
+    _applyCountry();
+    for (final id in shelfGenres) {
+      if (shelves.containsKey(id) || !_loadingShelves.add(id)) continue;
+      directory
+          .top(genreId: id, limit: 14)
+          .then((r) {
+            shelves[id] = r;
+            notifyListeners();
+          })
+          .catchError((Object _) {
+            // A shelf that fails is just left out; the chart above still works.
+          })
+          .whenComplete(() => _loadingShelves.remove(id));
+    }
+  }
+
   bool get searching => query.isNotEmpty;
   String get genreName =>
       storeGenres.where((g) => g.id == genreId).firstOrNull?.name ??
@@ -60,12 +84,14 @@ class StoreController extends ChangeNotifier {
   /// Loads the chart the first time the store is opened.
   Future<void> ensureTop() async {
     if (top.isEmpty && !loading && error == null) await loadTop();
+    loadShelves();
   }
 
   Future<void> loadTop() => _run(() async {
     final mine = _generation;
     final r = await directory.top(genreId: genreId, limit: 30);
     if (mine == _generation) top = r;
+    loadShelves();
   });
 
   Future<void> search(String text) async {
@@ -87,6 +113,8 @@ class StoreController extends ChangeNotifier {
 
   void setGenre(int? id) {
     genreId = id;
+    shelves.clear();
+    _loadingShelves.clear();
     top = const [];
     error = null;
     if (searching) {
@@ -458,25 +486,39 @@ class _StoreViewState extends State<StoreView> {
               'Results for “${store.query}”',
               sub: '${shown.length} podcasts',
             ),
-            _CoverGrid(podcasts: shown, onOpen: widget.onOpen),
+            for (final p in shown) _ResultRow(p, onOpen: widget.onOpen),
+            const SizedBox(height: 24),
           ],
         );
       }
-      final shelf = shown.take(12).toList();
+      final front = <Widget>[
+        _Hero(podcasts: shown.take(5).toList(), onOpen: widget.onOpen),
+        _Shelf(
+          title: store.genreId == null
+              ? 'Top Podcasts'
+              : 'Top ${store.genreName}',
+          podcasts: shown.take(14).toList(),
+          onOpen: widget.onOpen,
+        ),
+        if (store.genreId == null)
+          for (final id in StoreController.shelfGenres)
+            if (store.shelves[id]?.isNotEmpty ?? false)
+              _Shelf(
+                title: storeGenres.firstWhere((g) => g.id == id).name,
+                podcasts: store.shelves[id]!,
+                onOpen: widget.onOpen,
+                onSeeAll: () => store.setGenre(id),
+              ),
+        title(
+          'Top Charts',
+          sub: store.genreId == null ? 'All categories' : store.genreName,
+        ),
+        _ChartColumns(podcasts: shown, onOpen: widget.onOpen),
+        const SizedBox(height: 30),
+      ];
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          title(
-            store.genreId == null ? 'Top Podcasts' : 'Top ${store.genreName}',
-          ),
-          _CoverGrid(podcasts: shelf, onOpen: widget.onOpen),
-          title(
-            'Top Charts',
-            sub: store.genreId == null ? 'All categories' : store.genreName,
-          ),
-          _ChartColumns(podcasts: shown, onOpen: widget.onOpen),
-          const SizedBox(height: 30),
-        ],
+        children: front,
       );
     }
 
@@ -487,125 +529,24 @@ class _StoreViewState extends State<StoreView> {
           const LinearProgressIndicator(minHeight: 2)
         else
           const SizedBox(height: 2),
-        Expanded(child: ListView(children: [body()])),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final main = ListView(children: [body()]);
+              // Wide windows get the category list down the right side, like the iTunes Store's
+              // Podcast Quick Links.
+              if (c.maxWidth < 1000) return main;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: main),
+                  _CategoryColumn(store: store),
+                ],
+              );
+            },
+          ),
+        ),
       ],
-    );
-  }
-}
-
-/// Covers in a wrapping grid, each with its title, author and Subscribe pill.
-class _CoverGrid extends StatelessWidget {
-  const _CoverGrid({required this.podcasts, required this.onOpen});
-  final List<StorePodcast> podcasts;
-  final ValueChanged<String> onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 190,
-          mainAxisExtent: 292,
-          mainAxisSpacing: 14,
-          crossAxisSpacing: 18,
-        ),
-        itemCount: podcasts.length,
-        itemBuilder: (c, i) => _Cover(podcasts[i], onOpen: onOpen),
-      ),
-    );
-  }
-}
-
-class _Cover extends StatefulWidget {
-  const _Cover(this.p, {required this.onOpen});
-  final StorePodcast p;
-  final ValueChanged<String> onOpen;
-
-  @override
-  State<_Cover> createState() => _CoverState();
-}
-
-class _CoverState extends State<_Cover> {
-  bool hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final pal = Pal.of(context);
-    final p = widget.p;
-    return MouseRegion(
-      onEnter: (_) => setState(() => hover = true),
-      onExit: (_) => setState(() => hover = false),
-      child: GestureDetector(
-        onSecondaryTapDown: (d) {
-          context.read<Library>().podcasts.putIfAbsent(
-            p.feedUrl,
-            () => Podcast(
-              feedUrl: p.feedUrl,
-              title: p.title,
-              author: p.author,
-              imageUrl: p.imageUrl,
-              subscribed: false,
-            ),
-          );
-          showPodcastMenu(
-            context,
-            Zoom.at(context, d.globalPosition),
-            p.feedUrl,
-            onOpen: widget.onOpen,
-          );
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkWell(
-              onTap: () => openStorePodcast(context, p, widget.onOpen),
-              borderRadius: BorderRadius.circular(8),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 120),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: hover ? 0.35 : 0.2),
-                      blurRadius: hover ? 12 : 6,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Art(p.imageUrl, size: 190, radius: 8),
-              ),
-            ),
-            const SizedBox(height: 8),
-            InkWell(
-              onTap: () => openStorePodcast(context, p, widget.onOpen),
-              child: Text(
-                p.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: pal.text,
-                ),
-              ),
-            ),
-            Text(
-              p.author,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: pal.muted),
-            ),
-            const Spacer(),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SubscribePill(p, compact: true),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -966,6 +907,458 @@ class _PhoneStoreState extends State<PhoneStore> {
         if (store.loading && !eink) const LinearProgressIndicator(minHeight: 2),
         Expanded(child: list),
       ],
+    );
+  }
+}
+
+// ---- front page pieces -------------------------------------------------------------------
+
+/// The big banner at the top: the number one podcast with its cover, summary and Subscribe, and
+/// arrows to move through the next four.
+class _Hero extends StatefulWidget {
+  const _Hero({required this.podcasts, required this.onOpen});
+  final List<StorePodcast> podcasts;
+  final ValueChanged<String> onOpen;
+
+  @override
+  State<_Hero> createState() => _HeroState();
+}
+
+class _HeroState extends State<_Hero> {
+  int _i = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.podcasts.isEmpty) return const SizedBox.shrink();
+    final pal = Pal.of(context);
+    final n = widget.podcasts.length;
+    final i = _i.clamp(0, n - 1);
+    final p = widget.podcasts[i];
+    Widget arrow(IconData icon, int by) => IconButton(
+      tooltip: by < 0 ? 'Previous' : 'Next',
+      icon: Icon(icon, size: 30, color: pal.muted),
+      onPressed: n < 2 ? null : () => setState(() => _i = (i + by + n) % n),
+    );
+    return GestureDetector(
+      onSecondaryTapDown: (d) => _storeMenu(context, d, p, widget.onOpen),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [pal.header, pal.stripe],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: pal.rule),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            arrow(Icons.chevron_left, -1),
+            GestureDetector(
+              onSecondaryTapDown: (d) =>
+                  _storeMenu(context, d, p, widget.onOpen),
+              child: InkWell(
+                onTap: () => openStorePodcast(context, p, widget.onOpen),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Art(p.imageUrl, size: 180, radius: 8),
+                ),
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '#${i + 1} IN PODCASTS',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                      color: pal.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: () => openStorePodcast(context, p, widget.onOpen),
+                    child: Text(
+                      p.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        color: pal.text,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    [p.author, p.genre].where((x) => x.isNotEmpty).join(' · '),
+                    style: TextStyle(fontSize: 14, color: pal.muted),
+                  ),
+                  if (p.summary.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      p.summary,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: pal.text,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      SubscribePill(p),
+                      const Spacer(),
+                      for (var d = 0; d < n; d++)
+                        Container(
+                          width: 7,
+                          height: 7,
+                          margin: const EdgeInsets.only(left: 5),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: d == i
+                                ? pal.selected
+                                : pal.muted.withValues(alpha: 0.35),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            arrow(Icons.chevron_right, 1),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A row of covers that scrolls sideways (arrows at the right of the heading move it), with the
+/// heading and, for a category, "See All".
+class _Shelf extends StatefulWidget {
+  const _Shelf({
+    required this.title,
+    required this.podcasts,
+    required this.onOpen,
+    this.onSeeAll,
+  });
+  final String title;
+  final List<StorePodcast> podcasts;
+  final ValueChanged<String> onOpen;
+  final VoidCallback? onSeeAll;
+
+  @override
+  State<_Shelf> createState() => _ShelfState();
+}
+
+class _ShelfState extends State<_Shelf> {
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _move(int dir) {
+    if (!_scroll.hasClients) return;
+    final step = _scroll.position.viewportDimension * 0.8;
+    _scroll.animateTo(
+      (_scroll.offset + dir * step).clamp(
+        0.0,
+        _scroll.position.maxScrollExtent,
+      ),
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = Pal.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    if (widget.podcasts.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 22, 24, 8),
+          child: Row(
+            children: [
+              Text(
+                widget.title,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: pal.text,
+                ),
+              ),
+              if (widget.onSeeAll != null)
+                TextButton(
+                  onPressed: widget.onSeeAll,
+                  child: Text(
+                    'See All >',
+                    style: TextStyle(fontSize: 12.5, color: scheme.primary),
+                  ),
+                ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Scroll left',
+                icon: Icon(Icons.chevron_left, color: pal.muted),
+                onPressed: () => _move(-1),
+              ),
+              IconButton(
+                tooltip: 'Scroll right',
+                icon: Icon(Icons.chevron_right, color: pal.muted),
+                onPressed: () => _move(1),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 268,
+          child: ListView.separated(
+            controller: _scroll,
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            itemCount: widget.podcasts.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
+            itemBuilder: (c, i) => SizedBox(
+              width: 150,
+              child: _ShelfTile(widget.podcasts[i], onOpen: widget.onOpen),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Right-click on a store podcast: the same menu as for one you already have.
+void _storeMenu(
+  BuildContext context,
+  TapDownDetails d,
+  StorePodcast p,
+  ValueChanged<String> onOpen,
+) {
+  context.read<Library>().podcasts.putIfAbsent(
+    p.feedUrl,
+    () => Podcast(
+      feedUrl: p.feedUrl,
+      title: p.title,
+      author: p.author,
+      imageUrl: p.imageUrl,
+      subscribed: false,
+    ),
+  );
+  showPodcastMenu(
+    context,
+    Zoom.at(context, d.globalPosition),
+    p.feedUrl,
+    onOpen: onOpen,
+  );
+}
+
+class _ShelfTile extends StatelessWidget {
+  const _ShelfTile(this.p, {required this.onOpen});
+  final StorePodcast p;
+  final ValueChanged<String> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = Pal.of(context);
+    return GestureDetector(
+      onSecondaryTapDown: (d) => _storeMenu(context, d, p, onOpen),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => openStorePodcast(context, p, onOpen),
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Art(p.imageUrl, size: 150, radius: 6),
+            ),
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => openStorePodcast(context, p, onOpen),
+            child: Text(
+              p.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: pal.text,
+              ),
+            ),
+          ),
+          Text(
+            p.author,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: pal.muted),
+          ),
+          const Spacer(),
+          SubscribePill(p, compact: true),
+        ],
+      ),
+    );
+  }
+}
+
+/// A search result: cover, name, author and category, the start of the description and a
+/// Subscribe button, in a row rather than a tile so there is room to say what it is.
+class _ResultRow extends StatelessWidget {
+  const _ResultRow(this.p, {required this.onOpen});
+  final StorePodcast p;
+  final ValueChanged<String> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = Pal.of(context);
+    return InkWell(
+      onTap: () => openStorePodcast(context, p, onOpen),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: pal.rule.withValues(alpha: 0.5)),
+          ),
+        ),
+        child: Row(
+          children: [
+            Art(p.imageUrl, size: 76, radius: 6),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    p.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: pal.text,
+                    ),
+                  ),
+                  Text(
+                    [p.author, p.genre].where((x) => x.isNotEmpty).join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, color: pal.muted),
+                  ),
+                  if (p.summary.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        p.summary,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          height: 1.3,
+                          color: pal.muted,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            SubscribePill(p),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "All Categories" and each category as a plain list down the right side; the open one is bold.
+class _CategoryColumn extends StatelessWidget {
+  const _CategoryColumn({required this.store});
+  final StoreController store;
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = Pal.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    Widget link(String text, int? id) {
+      final sel = store.genreId == id;
+      return InkWell(
+        onTap: () => store.setGenre(id),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
+              color: sel ? pal.text : scheme.primary,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: 220,
+      padding: const EdgeInsets.fromLTRB(18, 22, 18, 24),
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(color: pal.rule.withValues(alpha: 0.6)),
+        ),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Categories',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: pal.muted,
+                letterSpacing: 0.4,
+              ),
+            ),
+            const SizedBox(height: 8),
+            link('All Podcasts', null),
+            for (final g in storeGenres) link(g.name, g.id),
+          ],
+        ),
+      ),
     );
   }
 }

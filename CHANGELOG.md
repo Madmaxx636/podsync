@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.14.0 - 2026-11-07
+
+Windows, Linux and Android.
+
+- New app icon: an antenna tower with radio waves coming off it to each side, on the blue-to-green square. It is used for the app, the taskbar and Start menu on Windows, the Linux package, the Android launcher (including the adaptive icon), the tray icon, the Android status-bar and notification icon, and the home-screen widgets.
+- Podcast Store page, desktop:
+  - A banner at the top shows the number one podcast with its cover, a short description and Subscribe, with arrows to step through the top five.
+  - Under it, rows of covers that scroll sideways: Top Podcasts, then News, Comedy, Technology, Society & Culture, Business, True Crime, Science and Sports, each with See All, which opens that category. Arrows beside each heading move along the row.
+  - In a wide window the categories are listed down the right side, with All Podcasts at the top.
+  - Search results are rows with the cover, name, author and category, the start of the description, and Subscribe, rather than bare tiles.
+  - Right-clicking a cover still gives the podcast menu, and Top Charts is unchanged.
+
 ## 0.13.0 - 2026-11-07
 
 Windows and Linux.
