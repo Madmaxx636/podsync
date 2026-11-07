@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.0 - 2026-11-07
+
+Windows and Linux.
+
+- The Podcasts section is redrawn to match iTunes 11.1's, view by view, from the screenshots in TidBITS' "Explaining Podcasts in iTunes 11.1".
+  - Tabs: Unplayed, My Podcasts and List sit in the middle of a thin bar, the chosen one in a rounded pill, with a refresh button at the left.
+  - Unplayed: a tall row per episode. On the left a blue dot for unplayed (a speaker for the one playing), the podcast's artwork, its name, when the episode came out (Yesterday, a weekday, or the full date) and how long it is, in words (1 hour 10 minutes). In the middle the episode's title in bold with its description under it and a blue More link to open the rest; at the right a cloud for anything not downloaded.
+  - My Podcasts: your shows in a grey column with their artwork and a round grey count, selected one darker. Drag a show anywhere on its row to reorder; the three-bar handle is gone. The show's header has its big artwork, its name with play, refresh and go-to-page buttons, and "N episodes • Subscribed", with Old Episodes and Settings as icon buttons at the right. Old Episodes shows every episode with a circle to put it in Up Next, and the header changes to Add All and a blue Done.
+  - List: the spreadsheet with a dot column, a check column (ticked means in Up Next, click to change it), Podcast, Time, Release Date (10/4/13 style) and Description. Podcast rows have a disclosure arrow. A bar along the bottom has Subscribe (for podcasts you have not subscribed to), Settings…, Podcast Catalog > (opens the Podcast Store) and Refresh.
+  - Settings… in the List view opens the Podcast Defaults sheet: Check for new episodes, Automatically Download and Episodes to Keep as drop-downs, with Cancel and OK. Nothing changes until OK.
+  - The status bar reads like iTunes': "38 episodes, 3.15 GB", "40 items, 2 days, 3.22 GB".
+- My Stations stays out, as asked.
+
 ## 0.12.1 - 2026-11-07
 
 Windows and Linux.

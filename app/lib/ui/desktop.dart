@@ -340,6 +340,8 @@ class _DesktopShellState extends State<DesktopShell> {
     } else if (s is _Library && s.kind == 'downloads') {
       final dm = context.read<DownloadManager>();
       return '${dm.doneCount} downloaded, ${fmtBytes(dm.totalBytes)}';
+    } else if (s is _Library && s.kind == 'podcasts') {
+      return podcastsStatus(lib);
     } else if (s is _Library && s.kind == 'stats') {
       final st = lib.stats();
       return '${fmtLong(st.listened, zero: '0 m')} listened across ${st.played} episodes';
@@ -375,6 +377,7 @@ class _DesktopShellState extends State<DesktopShell> {
         return PodcastsLibrary(
           filter: filter,
           onOpen: goPodcast,
+          onStore: () => _go(const _Store()),
           onFocusEpisode: focus,
         );
       case _Library(kind: 'queue'):

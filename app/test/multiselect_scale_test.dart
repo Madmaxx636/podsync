@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:podsync/ui/resize.dart';
 
-import 'desktop_features_test.dart' show pump;
+import 'desktop_features_test.dart' show pump, one, two;
 
 void main() {
   testWidgets('Ctrl-click selects several episodes and the bar acts on them', (
@@ -56,24 +56,30 @@ void main() {
   testWidgets('Podcasts has the Unplayed, My Podcasts and List views', (
     tester,
   ) async {
-    final (_, _) = await pump(tester);
+    final (lib, _) = await pump(tester);
     await tester.tap(find.text('Podcasts'));
     await tester.pumpAndSettle();
     for (final t in ['Unplayed', 'My Podcasts', 'List']) {
       expect(find.text(t), findsOneWidget, reason: t);
     }
-    // Unplayed: every unplayed episode, with the unplayed count above.
-    expect(find.textContaining(' unplayed'), findsWidgets);
+    // Unplayed: each unplayed episode with its podcast, when it came out and how long it is.
+    expect(find.text('Ep Two'), findsOneWidget);
+    expect(find.text('20 minutes'), findsOneWidget);
 
-    // My Podcasts: Old Episodes shows the played ones; Add All fills Up Next; Done goes back.
+    // My Podcasts: Old Episodes shows every episode with a queue circle; Add All fills Up Next;
+    // Done goes back.
     await tester.tap(find.text('My Podcasts'));
     await tester.pumpAndSettle();
     expect(find.text('Old Episodes'), findsOneWidget);
-    expect(find.text('Add All'), findsOneWidget);
-    expect(find.text('Settings'), findsWidgets);
+    expect(find.text('Settings'), findsWidgets); // this podcast's (and the menu's)
+    expect(find.text('Ep One'), findsNothing); // it is played
     await tester.tap(find.text('Old Episodes'));
     await tester.pumpAndSettle();
-    expect(find.text('Done'), findsOneWidget);
+    expect(find.text('Ep One'), findsOneWidget);
+    expect(find.text('Add All'), findsOneWidget);
+    await tester.tap(find.text('Add All'));
+    await tester.pumpAndSettle();
+    expect(lib.queue.toSet(), {one, two});
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
     expect(find.text('Old Episodes'), findsOneWidget);
