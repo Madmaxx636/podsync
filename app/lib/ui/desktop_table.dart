@@ -113,16 +113,37 @@ class _EpisodeTableState extends State<EpisodeTable> {
       final ratings = sortBy == 'rating'
           ? {for (final e in eps) e.id: lib.ratingOf(e.id)}
           : const <String, int>{};
-      int cmp(Episode a, Episode b) => switch (sortBy) {
+      // The Time column shows what is left for a half-played episode, so that is what it sorts by.
+      final times = sortBy == 'time'
+          ? {
+              for (final e in eps)
+                e.id: () {
+                  final pr = lib.progressOf(e.id);
+                  final left = lib.remainingOf(e);
+                  return !pr.played && pr.positionMs > 0 && left > Duration.zero
+                      ? left.inMilliseconds
+                      : e.durationMs;
+                }(),
+            }
+          : const <String, int>{};
+      int primary(Episode a, Episode b) => switch (sortBy) {
         'name' => names[a.id]!.compareTo(names[b.id]!),
-        'time' => a.durationMs.compareTo(b.durationMs),
+        'time' => times[a.id]!.compareTo(times[b.id]!),
         'podcast' => podcastTitles[a.feedUrl]!.compareTo(
           podcastTitles[b.feedUrl]!,
         ),
         'rating' => ratings[a.id]!.compareTo(ratings[b.id]!),
         _ => a.published.compareTo(b.published),
       };
-      eps.sort((a, b) => asc ? cmp(a, b) : cmp(b, a));
+      // Dart's sort is not stable, so equal rows (every episode of one podcast when sorting by
+      // Podcast, say) would come out in any order and jump about. They always fall back to
+      // newest first, then by title, whichever way the column runs.
+      eps.sort((a, b) {
+        final c = primary(a, b);
+        if (c != 0) return asc ? c : -c;
+        final byDate = b.published.compareTo(a.published);
+        return byDate != 0 ? byDate : a.title.compareTo(b.title);
+      });
     }
     _shown = eps;
 

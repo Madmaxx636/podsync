@@ -5,6 +5,7 @@
 Windows, Linux and Android.
 
 - New app icon: an antenna tower with radio waves coming off it to each side, on the blue-to-green square. It is used for the app, the taskbar and Start menu on Windows, the Linux package, the Android launcher (including the adaptive icon), the tray icon, the Android status-bar and notification icon, and the home-screen widgets.
+- Desktop: sorting an episode list by a column heading is steadier. Rows that tie (every episode of one podcast when you sort by Podcast, or equal ratings) used to come out in any order and jump about; they now stay newest first, then by title, whichever way the column runs. The Time column sorts by what it shows, so a half-played episode counts by the time it has left.
 - Podcast Store page, desktop:
   - A banner at the top shows the number one podcast with its cover, a short description and Subscribe, with arrows to step through the top five.
   - Under it, rows of covers that scroll sideways: Top Podcasts, then News, Comedy, Technology, Society & Culture, Business, True Crime, Science and Sports, each with See All, which opens that category. Arrows beside each heading move along the row.

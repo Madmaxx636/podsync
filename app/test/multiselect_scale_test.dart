@@ -129,4 +129,18 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
     },
   );
+
+  testWidgets('sorting by Podcast keeps each podcast newest first, both ways', (
+    tester,
+  ) async {
+    await pump(tester); // opens on Episodes
+    // Both episodes belong to one podcast, so they tie on Podcast: the newer one stays on top.
+    await tester.tap(find.text('Podcast'));
+    await tester.pumpAndSettle();
+    double y(String t) => tester.getTopLeft(find.text(t)).dy;
+    expect(y('Ep Two'), lessThan(y('Ep One')));
+    await tester.tap(find.text('Podcast')); // and the other way round
+    await tester.pumpAndSettle();
+    expect(y('Ep Two'), lessThan(y('Ep One')));
+  });
 }
