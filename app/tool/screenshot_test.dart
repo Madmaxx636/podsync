@@ -74,7 +74,7 @@ void main() {
       final image = await boundary.toImage(pixelRatio: 1);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       File(
-        Platform.environment['SHOT_OUT'] ?? '/tmp/claude-1000/gold/desktop.png',
+        Platform.environment['SHOT_OUT'] ?? '/tmp/podsync-gold/desktop.png',
       ).writeAsBytesSync(data!.buffer.asUint8List());
     });
   });

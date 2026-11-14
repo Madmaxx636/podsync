@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -395,7 +398,134 @@ class _BigEpisodes extends StatefulWidget {
 
 class _BigEpisodesState extends State<_BigEpisodes> {
   final Set<String> _more = {};
-  String? _selected;
+  final Set<String> _sel = {};
+  String? _anchor; // where a Shift-click or Shift+arrow range starts
+  String? _cursor; // the row the arrow keys move from
+  bool _ctrlNav =
+      false; // Ctrl+arrows moved the cursor without selecting: draw it
+  final FocusNode _focus = FocusNode();
+  final ScrollController _scroll = ScrollController();
+  final Map<String, GlobalKey> _keys = {};
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  int get _cursorIndex =>
+      _cursor == null ? -1 : widget.episodes.indexWhere((x) => x.id == _cursor);
+
+  void _notify() {
+    final one = _sel.length == 1
+        ? widget.episodes.where((x) => x.id == _sel.first).firstOrNull
+        : null;
+    widget.onFocusEpisode(one);
+  }
+
+  /// Click selects one row, Ctrl-click toggles it, Shift-click selects a range.
+  void _click(Episode e, int index) {
+    final kb = HardwareKeyboard.instance;
+    _cursor = e.id;
+    _ctrlNav = false;
+    if (kb.isShiftPressed && _anchor != null) {
+      final from = widget.episodes.indexWhere((x) => x.id == _anchor);
+      if (from >= 0) {
+        _sel
+          ..clear()
+          ..addAll(
+            widget.episodes
+                .sublist(math.min(from, index), math.max(from, index) + 1)
+                .map((x) => x.id),
+          );
+        return;
+      }
+    }
+    if (kb.isControlPressed || kb.isMetaPressed) {
+      _sel.contains(e.id) ? _sel.remove(e.id) : _sel.add(e.id);
+    } else {
+      _sel
+        ..clear()
+        ..add(e.id);
+    }
+    _anchor = e.id;
+  }
+
+  /// Arrow keys: plain selects one row, Shift extends the selection from where it started, Ctrl
+  /// moves the cursor without selecting, Shift+Ctrl adds the range to what is selected.
+  void _move({int? by, int? to, bool shift = false, bool ctrl = false}) {
+    final eps = widget.episodes;
+    if (eps.isEmpty) return;
+    final cur = _cursorIndex;
+    var next = to ?? (cur < 0 ? (by! > 0 ? 0 : eps.length - 1) : cur + by!);
+    next = next.clamp(0, eps.length - 1);
+    setState(() {
+      final id = eps[next].id;
+      if (shift) {
+        var from = _anchor == null
+            ? -1
+            : eps.indexWhere((x) => x.id == _anchor);
+        if (from < 0) {
+          from = cur < 0 ? next : cur;
+          _anchor = eps[from].id;
+        }
+        if (!ctrl) _sel.clear();
+        _sel.addAll(
+          eps
+              .sublist(math.min(from, next), math.max(from, next) + 1)
+              .map((x) => x.id),
+        );
+        _ctrlNav = false;
+      } else if (ctrl) {
+        _ctrlNav = true;
+      } else {
+        _sel
+          ..clear()
+          ..add(id);
+        _anchor = id;
+        _ctrlNav = false;
+      }
+      _cursor = id;
+    });
+    _notify();
+    _reveal(next);
+  }
+
+  void _toggleCursor() {
+    final i = _cursorIndex;
+    if (i < 0) return;
+    final id = widget.episodes[i].id;
+    setState(() {
+      _sel.contains(id) ? _sel.remove(id) : _sel.add(id);
+      _anchor = id;
+    });
+    _notify();
+  }
+
+  /// Rows differ in height, so bring the row into view once it has been built.
+  void _reveal(int i) {
+    final id = widget.episodes[i].id;
+    void go(int tries) {
+      final ctx = _keys[id]?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        );
+        Scrollable.ensureVisible(
+          ctx,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+        );
+      } else if (tries > 0 && _scroll.hasClients) {
+        // Not built yet (far off screen): jump near it, then look again.
+        _scroll.jumpTo((i * 84.0).clamp(0.0, _scroll.position.maxScrollExtent));
+        WidgetsBinding.instance.addPostFrameCallback((_) => go(tries - 1));
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => go(3));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -414,8 +544,8 @@ class _BigEpisodesState extends State<_BigEpisodes> {
     final unplayedMode = widget.mode == _RowMode.unplayed;
     final old = widget.mode == _RowMode.oldShow;
 
-    Widget row(Episode e) {
-      final sel = _selected == e.id;
+    Widget row(Episode e, int index) {
+      final sel = _sel.contains(e.id);
       final playing = currentId == e.id;
       final played = lib.progressOf(e.id).played;
       final grey = old && played;
@@ -601,18 +731,25 @@ class _BigEpisodesState extends State<_BigEpisodes> {
             );
 
       return GestureDetector(
+        key: _keys.putIfAbsent(e.id, GlobalKey.new),
         onSecondaryTapDown: (d) {
-          setState(() => _selected = e.id);
+          // Right-clicking outside the selection selects just that row first.
+          if (!_sel.contains(e.id)) {
+            setState(() => _click(e, index));
+            _notify();
+          }
           showEpisodeMenu(context, Zoom.at(context, d.globalPosition), [
-            e,
+            for (final x in widget.episodes)
+              if (_sel.contains(x.id)) x,
           ], onGoToPodcast: widget.onOpen);
         },
         child: Listener(
           behavior: HitTestBehavior.opaque,
           onPointerDown: (ev) {
             if (ev.buttons != kPrimaryButton) return;
-            setState(() => _selected = e.id);
-            widget.onFocusEpisode(e);
+            _focus.requestFocus();
+            setState(() => _click(e, index));
+            _notify();
           },
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -621,11 +758,16 @@ class _BigEpisodesState extends State<_BigEpisodes> {
               constraints: const BoxConstraints(minHeight: 72),
               padding: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
-                color: sel ? pal.selected.withValues(alpha: 0.14) : null,
+                color: sel ? pal.selected.withValues(alpha: 0.18) : null,
                 border: Border(
                   bottom: BorderSide(color: pal.rule.withValues(alpha: 0.5)),
                 ),
               ),
+              foregroundDecoration: _ctrlNav && _cursor == e.id
+                  ? BoxDecoration(
+                      border: Border.all(color: pal.selected, width: 1.5),
+                    )
+                  : null,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -642,9 +784,63 @@ class _BigEpisodesState extends State<_BigEpisodes> {
       );
     }
 
-    return ListView.builder(
-      itemCount: widget.episodes.length,
-      itemBuilder: (c, i) => row(widget.episodes[i]),
+    void play() {
+      final chosen = [
+        for (final x in widget.episodes)
+          if (_sel.contains(x.id)) x,
+      ];
+      if (chosen.isEmpty) return;
+      if (chosen.length > 1) {
+        lib.enqueueAll([for (final x in chosen.skip(1)) x.id], next: true);
+      }
+      player.play(chosen.first);
+    }
+
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.enter): play,
+        const SingleActivator(LogicalKeyboardKey.keyA, control: true): () =>
+            setState(() {
+              _sel.addAll(widget.episodes.map((x) => x.id));
+              _notify();
+            }),
+        for (final (key, by) in [
+          (LogicalKeyboardKey.arrowUp, -1),
+          (LogicalKeyboardKey.arrowDown, 1),
+        ])
+          for (final (shift, ctrl) in [
+            (false, false),
+            (true, false),
+            (false, true),
+            (true, true),
+          ])
+            SingleActivator(key, shift: shift, control: ctrl): () =>
+                _move(by: by, shift: shift, ctrl: ctrl),
+        for (final (key, last) in [
+          (LogicalKeyboardKey.home, false),
+          (LogicalKeyboardKey.end, true),
+        ])
+          for (final shift in [false, true])
+            SingleActivator(key, shift: shift): () =>
+                _move(to: last ? widget.episodes.length - 1 : 0, shift: shift),
+        for (final (key, by) in [
+          (LogicalKeyboardKey.pageUp, -1),
+          (LogicalKeyboardKey.pageDown, 1),
+        ])
+          for (final shift in [false, true])
+            SingleActivator(key, shift: shift): () =>
+                _move(by: by * 6, shift: shift),
+        const SingleActivator(LogicalKeyboardKey.space, control: true):
+            _toggleCursor,
+      },
+      child: Focus(
+        focusNode: _focus,
+        child: ListView.builder(
+          controller: _scroll,
+          itemCount: widget.episodes.length,
+          itemBuilder: (c, i) => row(widget.episodes[i], i),
+        ),
+      ),
     );
   }
 }

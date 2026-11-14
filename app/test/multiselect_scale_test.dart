@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -178,5 +179,79 @@ void main() {
     await tester.tap(find.text('Title, A to Z'));
     await tester.pumpAndSettle();
     expect(y('Ep One'), lessThan(y('Ep Two')));
+  });
+
+  testWidgets('arrow keys walk the episode list; Shift and Ctrl extend it', (
+    tester,
+  ) async {
+    final (lib, _) = await pump(
+      tester,
+    ); // opens on Episodes: Ep Two above Ep One
+    lib.setSetting('showDetails', true);
+    await tester.pump();
+    Future<void> key(
+      LogicalKeyboardKey k, {
+      bool shift = false,
+      bool ctrl = false,
+    }) async {
+      if (shift) await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      if (ctrl) await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(k);
+      if (ctrl) await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      if (shift) await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+    }
+
+    // Plain arrows move the selection; the details pane follows it.
+    await tester.tap(find.text('Ep Two'));
+    await tester.pump();
+    expect(find.text('Ep One'), findsOneWidget); // only its row
+    await key(LogicalKeyboardKey.arrowDown);
+    expect(find.text('Ep One'), findsNWidgets(2)); // row and details pane
+    await key(LogicalKeyboardKey.arrowUp);
+    expect(find.text('Ep One'), findsOneWidget);
+    expect(find.textContaining(' selected'), findsNothing);
+
+    // Shift+arrow selects a range.
+    await key(LogicalKeyboardKey.arrowDown, shift: true);
+    expect(find.text('2 selected'), findsOneWidget);
+
+    // Ctrl+arrow moves without selecting; Ctrl+Space then adds the row.
+    await tester.tap(find.text('Ep Two'));
+    await tester.pump();
+    expect(find.textContaining(' selected'), findsNothing);
+    await key(LogicalKeyboardKey.arrowDown, ctrl: true);
+    expect(find.textContaining(' selected'), findsNothing);
+    await key(LogicalKeyboardKey.space, ctrl: true);
+    expect(find.text('2 selected'), findsOneWidget);
+
+    // Keys at the ends do not run off the list.
+    await key(LogicalKeyboardKey.arrowDown);
+    await key(LogicalKeyboardKey.arrowDown);
+    await key(LogicalKeyboardKey.arrowUp);
+    await key(LogicalKeyboardKey.arrowUp);
+    await key(LogicalKeyboardKey.arrowUp);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 400));
+  });
+
+  testWidgets('arrow keys and Shift also work in the Podcasts views', (
+    tester,
+  ) async {
+    final (lib, _) = await pump(tester);
+    lib.markPlayed(one, false);
+    await tester.tap(find.text('Podcasts'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ep Two'));
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    // Both rows are selected now: the right-click menu offers to play them together.
+    await tester.tap(find.text('Ep Two'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Play 2 Episodes'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 400));
   });
 }

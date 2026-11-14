@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -60,7 +62,11 @@ class _EpisodeTableState extends State<EpisodeTable> {
   bool? _asc; // null until the user clicks a header; then follows the "episode order" setting
   final Set<String> selected = {};
   final FocusNode _focus = FocusNode();
-  String? _anchor; // where a shift-click range starts
+  String? _anchor; // where a shift-click or Shift+arrow range starts
+  String? _cursor; // the row the arrow keys move from
+  bool _ctrlNav =
+      false; // Ctrl+arrows moved the cursor without selecting: draw it
+  final ScrollController _scroll = ScrollController();
   List<Episode> _shown = [];
   final Map<String, double> _dragging =
       {}; // widths while a column edge is being dragged
@@ -69,6 +75,7 @@ class _EpisodeTableState extends State<EpisodeTable> {
 
   @override
   void dispose() {
+    _scroll.dispose();
     _focus.dispose();
     super.dispose();
   }
@@ -512,6 +519,11 @@ class _EpisodeTableState extends State<EpisodeTable> {
             onDoubleTap: () => player.play(e),
             child: Container(
               color: sel ? pal.selected : (i.isOdd ? pal.stripe : pal.bg),
+              foregroundDecoration: _ctrlNav && _cursor == e.id
+                  ? BoxDecoration(
+                      border: Border.all(color: pal.selected, width: 1.5),
+                    )
+                  : null,
               child: Row(children: [for (final c in cols) cell(c, content(c))]),
             ),
           ),
@@ -549,6 +561,7 @@ class _EpisodeTableState extends State<EpisodeTable> {
     } else if (queue && widget.canReorder) {
       body = ReorderableListView.builder(
         buildDefaultDragHandles: false,
+        scrollController: _scroll,
         itemExtent: rowHeight,
         itemCount: eps.length,
         onReorderItem: _reorder,
@@ -556,6 +569,7 @@ class _EpisodeTableState extends State<EpisodeTable> {
       );
     } else {
       body = ListView.builder(
+        controller: _scroll,
         itemExtent: rowHeight,
         itemCount: eps.length,
         itemBuilder: (c, i) => row(c, eps[i], i),
@@ -568,6 +582,44 @@ class _EpisodeTableState extends State<EpisodeTable> {
             selectAll,
         const SingleActivator(LogicalKeyboardKey.keyA, meta: true): selectAll,
         const SingleActivator(LogicalKeyboardKey.enter): playSelected,
+        // Arrow keys walk the list; Shift extends the selection; Ctrl moves without selecting
+        // (Ctrl+Space then picks or drops the row); Shift+Ctrl adds a range to what is selected.
+        for (final (key, by) in [
+          (LogicalKeyboardKey.arrowUp, -1),
+          (LogicalKeyboardKey.arrowDown, 1),
+        ])
+          for (final (shift, ctrl) in [
+            (false, false),
+            (true, false),
+            (false, true),
+            (true, true),
+          ])
+            SingleActivator(key, shift: shift, control: ctrl): () =>
+                _move(by: by, shift: shift, ctrl: ctrl),
+        for (final (key, last) in [
+          (LogicalKeyboardKey.home, false),
+          (LogicalKeyboardKey.end, true),
+        ])
+          for (final (shift, ctrl) in [
+            (false, false),
+            (true, false),
+            (false, true),
+            (true, true),
+          ])
+            SingleActivator(key, shift: shift, control: ctrl): () => _move(
+              to: last ? _shown.length - 1 : 0,
+              shift: shift,
+              ctrl: ctrl,
+            ),
+        for (final (key, by) in [
+          (LogicalKeyboardKey.pageUp, -1),
+          (LogicalKeyboardKey.pageDown, 1),
+        ])
+          for (final shift in [false, true])
+            SingleActivator(key, shift: shift): () =>
+                _move(by: by * _pageRows(rowHeight), shift: shift, ctrl: false),
+        const SingleActivator(LogicalKeyboardKey.space, control: true):
+            _toggleCursor,
         if (queue) ...{
           // In Up Next, Delete takes the selected episodes off the queue and Alt+arrows move them.
           const SingleActivator(LogicalKeyboardKey.delete): () =>
@@ -795,8 +847,90 @@ class _EpisodeTableState extends State<EpisodeTable> {
     );
   }
 
+  int get _cursorIndex =>
+      _cursor == null ? -1 : _shown.indexWhere((x) => x.id == _cursor);
+
+  /// How many rows one Page Up / Page Down moves.
+  int _pageRows(double rowHeight) => math.max(
+    1,
+    ((_scroll.hasClients ? _scroll.position.viewportDimension : 400) /
+                rowHeight)
+            .floor() -
+        1,
+  );
+
+  /// Moves the cursor [by] rows or [to] a row, from the keyboard. Plain: select just that row.
+  /// Shift: select everything from where the selection started to there. Ctrl: move the cursor
+  /// only. Shift+Ctrl: add that range to what is already selected.
+  void _move({int? by, int? to, bool shift = false, bool ctrl = false}) {
+    if (_shown.isEmpty) return;
+    final cur = _cursorIndex;
+    var next = to ?? (cur < 0 ? (by! > 0 ? 0 : _shown.length - 1) : cur + by!);
+    next = next.clamp(0, _shown.length - 1);
+    setState(() {
+      final id = _shown[next].id;
+      if (shift) {
+        var from = _anchor == null
+            ? -1
+            : _shown.indexWhere((x) => x.id == _anchor);
+        if (from < 0) {
+          from = cur < 0 ? next : cur;
+          _anchor = _shown[from].id;
+        }
+        if (!ctrl) selected.clear();
+        selected.addAll(
+          _shown
+              .sublist(math.min(from, next), math.max(from, next) + 1)
+              .map((x) => x.id),
+        );
+        _ctrlNav = false;
+      } else if (ctrl) {
+        _ctrlNav = true; // only the cursor moves
+      } else {
+        selected
+          ..clear()
+          ..add(id);
+        _anchor = id;
+        _ctrlNav = false;
+      }
+      _cursor = id;
+    });
+    _notifyFocus();
+    _reveal(next);
+  }
+
+  /// Ctrl+Space: pick or drop the row under the cursor, as Ctrl-click does.
+  void _toggleCursor() {
+    final i = _cursorIndex;
+    if (i < 0) return;
+    final id = _shown[i].id;
+    setState(() {
+      selected.contains(id) ? selected.remove(id) : selected.add(id);
+      _anchor = id;
+    });
+    _notifyFocus();
+  }
+
+  /// Scrolls just far enough to bring row [i] into view.
+  void _reveal(int i) {
+    if (!_scroll.hasClients) return;
+    final h = context.read<Library>().settings.tableRowHeight.toDouble();
+    final top = i * h, view = _scroll.position.viewportDimension;
+    var offset = _scroll.offset;
+    if (top < offset) {
+      offset = top;
+    } else if (top + h > offset + view) {
+      offset = top + h - view;
+    }
+    if (offset != _scroll.offset) {
+      _scroll.jumpTo(offset.clamp(0.0, _scroll.position.maxScrollExtent));
+    }
+  }
+
   /// Click selects one row, Ctrl/Cmd-click toggles it, Shift-click selects a range.
   void _select(Episode e, int index) {
+    _cursor = e.id;
+    _ctrlNav = false;
     final kb = HardwareKeyboard.instance;
     if (kb.isShiftPressed && _anchor != null) {
       final from = _shown.indexWhere((x) => x.id == _anchor);

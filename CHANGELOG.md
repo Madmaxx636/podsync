@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.15.0 - 2026-11-13
+
+Windows and Linux.
+
+- Keyboard control of episode lists. Click an episode, then:
+  - Up and Down move the selection one row at a time, and the list scrolls to keep it in view.
+  - Shift+Up and Shift+Down select a range from the episode you started on.
+  - Ctrl+Up and Ctrl+Down move a cursor (drawn as an outline) without changing the selection; Ctrl+Space picks or drops the row under it, and Shift+Ctrl+Up and Down add a range to what is already selected.
+  - Home and End jump to the first and last episode, Page Up and Page Down move a screenful, each with Shift to extend.
+  - Enter plays the selection, Ctrl+A selects everything, and the selection bar and right-click menu act on whatever is selected.
+  - It works in every episode list, including Podcasts > Unplayed and My Podcasts, where Ctrl-click and Shift-click also select several episodes now.
+
 ## 0.14.1 - 2026-11-07
 
 Windows and Linux.
