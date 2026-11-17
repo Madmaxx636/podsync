@@ -202,13 +202,21 @@ class PlayerController extends ChangeNotifier {
     // Smart rewind: after a longer pause, step back a little to catch up on context.
     final rewind = library.settings.smartRewindSec;
     final paused = _pausedAt;
-    if (rewind > 0 &&
+    final back =
+        rewind > 0 &&
         paused != null &&
-        DateTime.now().difference(paused) > const Duration(seconds: 30)) {
-      await _player.seek(_clamp(_player.position - Duration(seconds: rewind)));
-    }
+        DateTime.now().difference(paused) > const Duration(seconds: 30);
     _pausedAt = null;
+    // Start playing at once. The rewind used to be awaited first, and after a long pause a
+    // streamed episode has to ask the server again for the new spot, which took seconds and, on a
+    // dead connection, up to a minute before anything played. Now it plays from the buffer and
+    // steps back as soon as the server answers.
     _player.play();
+    if (back) {
+      unawaited(
+        _player.seek(_clamp(_player.position - Duration(seconds: rewind))),
+      );
+    }
   }
 
   Future<void> pause() async {

@@ -61,7 +61,11 @@ Future<void> main(List<String> args) async {
             'Controls for the episode that is playing',
         androidNotificationIcon: 'drawable/ic_stat_podsync',
         androidShowNotificationBadge: false,
-        androidNotificationOngoing: true,
+        // The notification stays, and PodSync stays a foreground service, while paused. With the
+        // default Android takes it out of the foreground on pause and, a little later, the whole
+        // app, so the play button then has to start PodSync from scratch (seconds to a minute).
+        androidStopForegroundOnPause: false,
+        androidNotificationOngoing: false,
         fastForwardInterval: const Duration(seconds: 30),
         rewindInterval: const Duration(seconds: 10),
         artDownscaleWidth: 512,

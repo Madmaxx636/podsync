@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.2 - 2026-11-17
+
+Android.
+
+- Resuming playback is quick again after a pause. When PodSync was paused for a while Android took its notification out of the foreground and, a little later, shut the app down, so the play button on the notification, lock screen or headphones had to start PodSync from scratch, which took seconds to a minute. The notification now stays, and PodSync stays a foreground service, while paused (so it can no longer be swiped away until you close PodSync or stop playback).
+- Pressing play after a long pause starts the sound at once. With Settings > Playback > Smart rewind on, the step back used to be waited for first, and a streamed episode has to ask the server for the new spot, so on a slow or dead connection nothing played for a long time. It now plays from what is already loaded and steps back when the server answers.
+
 ## 0.15.1 - 2026-11-17
 
 Windows.
