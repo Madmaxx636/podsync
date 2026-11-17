@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.3 - 2026-11-17
+
+Windows.
+
+- Fixed Media controls showing "Not working: Bad state: smtc_windows's codegen version (2.11.1) should be the same as runtime version (2.13.0)" in Settings > System. The library behind the Windows media overlay and Bluetooth headphone buttons only runs when its bridge library is exactly version 2.11.1, and PodSync was shipping 2.13.0, so that half of the media keys never started (only the keyboard hook did). The bridge library is now pinned to 2.11.1, so the media overlay on the lock screen and volume flyout, and the headphone buttons that go through it, work as intended.
+
 ## 0.15.2 - 2026-11-17
 
 Android.
