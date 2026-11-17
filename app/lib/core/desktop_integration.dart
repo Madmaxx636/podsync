@@ -36,7 +36,10 @@ class DesktopIntegration with TrayListener, WindowListener {
   WindowsMediaKeys? _keys;
   DateTime _lastKey = DateTime.fromMillisecondsSinceEpoch(0);
   String _lastKeyCommand = '';
-  DateTime _lastPlaying = DateTime.fromMillisecondsSinceEpoch(0);
+  // Starts as "now": for the first hours after launch the media keys are PodSync's even before
+  // anything has played, so a headphone button can start Up Next.
+  DateTime _lastPlaying = DateTime.now();
+  Timer? _hookWatchdog;
   String _settingsKey = '';
   String _playerKey = '';
 
@@ -137,7 +140,10 @@ class DesktopIntegration with TrayListener, WindowListener {
   // ---- window and tray -----------------------------------------------------------------
 
   @override
-  void onWindowFocus() => _focused = true;
+  void onWindowFocus() {
+    _focused = true;
+    _reinstallHook();
+  }
 
   @override
   void onWindowBlur() => _focused = false;
@@ -283,7 +289,10 @@ class DesktopIntegration with TrayListener, WindowListener {
         } catch (e) {
           status['Media keys'] = 'Not working: $e';
         }
-        if (_keys != null) status['Media keys'] = 'Active';
+        if (_keys != null) {
+          status['Media keys'] = 'Active';
+          _watchHook();
+        }
       }
       // 2. The system media overlay and lock screen.
       if (_smtc == null) {
@@ -318,15 +327,45 @@ class DesktopIntegration with TrayListener, WindowListener {
     }
   }
 
+  /// Windows silently drops a low-level keyboard hook whose thread is too slow to answer (a long
+  /// frame, a big feed being parsed), and the media keys then stop working until PodSync is
+  /// restarted. So the hook is put back every so often, and whenever the window or playback
+  /// changes, which costs next to nothing.
+  void _watchHook() {
+    _hookWatchdog?.cancel();
+    _hookWatchdog = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _reinstallHook(),
+    );
+  }
+
+  void _reinstallHook() {
+    final keys = _keys;
+    if (keys == null) return;
+    try {
+      keys.restart();
+    } catch (_) {}
+  }
+
+  void _noteKey(String what, String source) {
+    final t = DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    status['Media keys'] =
+        'Active. Last key: $what via $source at ${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
+  }
+
   /// A media key seen by the Windows hook. PodSync takes the key when it is what the person is
   /// listening to (playing now, or paused a short while ago) and leaves it for other apps otherwise.
   bool _mediaKey(String command) {
     if (player.playing) _lastPlaying = DateTime.now();
+    // Something PodSync could play: what is loaded, or Up Next. And either it is playing or it
+    // was in the last twelve hours (or since launch), so a long pause does not hand the headphone
+    // button to a browser tab.
+    final haveSomething = player.current != null || lib.queue.isNotEmpty;
     final mine =
-        player.current != null &&
+        haveSomething &&
         (player.playing ||
-            DateTime.now().difference(_lastPlaying) <
-                const Duration(minutes: 30));
+            DateTime.now().difference(_lastPlaying) < const Duration(hours: 12));
     if (!mine) return false;
     // A key can reach us twice (the hook and the system's media session): act once.
     final now = DateTime.now();
@@ -336,10 +375,12 @@ class DesktopIntegration with TrayListener, WindowListener {
     }
     _lastKey = now;
     _lastKeyCommand = command;
+    _noteKey(command, 'the keyboard hook');
     Future.microtask(() {
       switch (command) {
         case 'playpause':
-          player.toggle();
+          // With nothing loaded this starts Up Next (or the last episode) instead of doing nothing.
+          player.current == null ? player.playFromAnywhere() : player.toggle();
         case 'next':
           player.next();
         case 'previous':
@@ -352,6 +393,8 @@ class DesktopIntegration with TrayListener, WindowListener {
   }
 
   Future<void> _stopMedia() async {
+    _hookWatchdog?.cancel();
+    _hookWatchdog = null;
     _keys?.stop();
     _keys = null;
     await _smtcButtons?.cancel();
@@ -363,10 +406,21 @@ class DesktopIntegration with TrayListener, WindowListener {
   }
 
   void _smtcPressed(PressedButton b) {
+    _noteKey(b.name, 'the Windows media overlay');
     switch (b) {
       case PressedButton.play:
-        if (!player.playing && player.current != null) player.toggle();
       case PressedButton.pause:
+        // One press of a headphone button is one toggle, whatever name Windows gives it: if the
+        // overlay's idea of playing or paused is a moment out of date, an exact Play or Pause
+        // would do nothing. A key the hook already used a moment ago is not used twice.
+        final now = DateTime.now();
+        if (_lastKeyCommand == 'playpause' &&
+            now.difference(_lastKey) < const Duration(milliseconds: 400)) {
+          return;
+        }
+        _lastKey = now;
+        _lastKeyCommand = 'playpause';
+        player.current == null ? player.playFromAnywhere() : player.toggle();
       case PressedButton.stop:
         if (player.playing) player.toggle();
       case PressedButton.next:
@@ -387,6 +441,7 @@ class DesktopIntegration with TrayListener, WindowListener {
     if (player.playing) _lastPlaying = DateTime.now();
     final episodeChanged = player.current?.id != _lastNotifiedId;
     _playerKey = key;
+    _reinstallHook();
     _updateTrayMenu();
     _updateSmtc();
     _updateTaskbar();
@@ -503,7 +558,11 @@ class DesktopIntegration with TrayListener, WindowListener {
   Future<void> _updateSmtc() async {
     final smtc = _smtc;
     if (smtc == null) return;
-    final e = player.current;
+    // Windows sends the headphone button to the media session that last said it had something to
+    // play. With nothing loaded PodSync used to say "stopped", so the button went elsewhere; now it
+    // offers the first episode of Up Next, paused, and pressing play starts it.
+    final loaded = player.current;
+    final e = loaded ?? lib.queueEpisodes.firstOrNull;
     try {
       if (e == null) {
         await smtc.setPlaybackStatus(PlaybackStatus.stopped);
@@ -520,12 +579,16 @@ class DesktopIntegration with TrayListener, WindowListener {
       await smtc.updateTimeline(
         PlaybackTimeline(
           startTimeMs: 0,
-          endTimeMs: player.duration.inMilliseconds,
-          positionMs: player.position.inMilliseconds,
+          endTimeMs: loaded == null
+              ? e.durationMs
+              : player.duration.inMilliseconds,
+          positionMs: loaded == null ? 0 : player.position.inMilliseconds,
         ),
       );
       await smtc.setPlaybackStatus(
-        player.playing ? PlaybackStatus.playing : PlaybackStatus.paused,
+        loaded != null && player.playing
+            ? PlaybackStatus.playing
+            : PlaybackStatus.paused,
       );
     } catch (_) {}
   }

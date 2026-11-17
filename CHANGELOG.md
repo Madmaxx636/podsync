@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.15.1 - 2026-11-17
+
+Windows.
+
+- Headphone and keyboard play/pause is more reliable.
+  - Windows quietly switches off a keyboard hook that is slow to answer once, and the media keys then stayed dead until PodSync was restarted, which is why the button only worked again after opening the app. PodSync now puts the hook back every 15 seconds, and whenever the window gets focus or playback changes.
+  - PodSync used to take the media keys only if an episode was loaded and had played in the last 30 minutes, so right after launch, or after a long pause, the button did nothing. It now takes them whenever it has an episode loaded or something in Up Next, for twelve hours after it last played (or after launch).
+  - With nothing loaded, the button starts Up Next (or the last episode) instead of doing nothing, and the Windows media overlay now offers the first episode of Up Next so the system keeps sending the button to PodSync.
+  - Play and Pause from the Windows media overlay (what many Bluetooth headphones send) are treated as one toggle, so a moment of stale state no longer swallows a press.
+  - Settings > System > Media keys now shows the last key PodSync received, when, and whether it came through the keyboard hook or the Windows media overlay, so a button that does nothing can be traced.
+
 ## 0.15.0 - 2026-11-13
 
 Windows and Linux.

@@ -83,6 +83,14 @@ class WindowsMediaKeys {
     return true;
   }
 
+  /// Puts the hook back: removes it and installs a new one. Windows drops a low-level hook whose
+  /// thread answered too slowly, without telling anyone, so this is done regularly.
+  bool restart() {
+    if (!Platform.isWindows) return active;
+    stop();
+    return start();
+  }
+
   void stop() {
     final hook = _hook;
     if (hook != null && hook.address != 0 && Platform.isWindows) {
